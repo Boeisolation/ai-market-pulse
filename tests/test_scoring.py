@@ -72,6 +72,19 @@ def test_score_is_clipped_to_0_100() -> None:
     assert 0 <= signal.score <= 100
 
 
+def test_zero_sma200_is_treated_as_a_valid_value_not_missing() -> None:
+    metrics = {
+        "last_close": 110,
+        "sma20": 100,
+        "sma50": 95,
+        "sma200": 0.0,
+    }
+
+    signal = score_asset(metrics)
+
+    assert "Long-term trend remains above the 200-day average." in signal.reasons
+
+
 def test_reasons_are_capped() -> None:
     metrics = {
         "last_close": 110,
