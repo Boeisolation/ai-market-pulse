@@ -278,6 +278,48 @@ def test_run_partial_failure_still_appends_history_and_notifies(tmp_path, monkey
     assert attempted, "notifications must be attempted when at least one symbol has valid data"
 
 
+def test_test_notify_calls_send_notifications_with_config_targets(tmp_path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "watchlist.yaml"
+    _write_minimal_watchlist(config_path, ["AAA"], with_notification=True)
+
+    captured_calls: list[tuple] = []
+
+    def _fake_send_notifications(report, targets, html_path=None, report_url=None):
+        captured_calls.append((report, targets, html_path, report_url))
+        return ["webhook:default sent"]
+
+    monkeypatch.setattr(cli, "send_notifications", _fake_send_notifications)
+
+    cli.main(["test-notify", "--config", str(config_path)])
+
+    assert len(captured_calls) == 1
+    _, targets, _, _ = captured_calls[0]
+    assert targets and targets[0].type == "webhook"
+
+    captured = capsys.readouterr()
+    assert "webhook:default sent" in captured.out
+
+
+def test_test_notify_reports_when_nothing_configured(tmp_path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "watchlist.yaml"
+    _write_minimal_watchlist(config_path, ["AAA"], with_notification=False)
+
+    called = False
+
+    def _fake_send_notifications(*args, **kwargs):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr(cli, "send_notifications", _fake_send_notifications)
+
+    cli.main(["test-notify", "--config", str(config_path)])
+
+    assert called is False
+    captured = capsys.readouterr()
+    assert "--telegram-token" in captured.out
+
+
 def test_run_rejects_no_ai_and_ai_only_together(tmp_path, monkeypatch) -> None:
     config = AppConfig(
         title="Test",

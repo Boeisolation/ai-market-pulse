@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 from dataclasses import replace
+from datetime import datetime, timezone as dt_timezone
 from pathlib import Path
 
 import yaml
@@ -13,6 +15,7 @@ from .demo import build_demo
 from .doctor import format_doctor, run_doctor
 from .engine import run_analysis
 from .history import append_history, attach_history, load_history
+from .models import DailyReport
 from .notify import send_notifications
 from .portfolio_import import import_portfolio_config
 from .reporting import write_reports
@@ -36,6 +39,21 @@ def main(argv: list[str] | None = None) -> None:
     init_parser.add_argument("--timezone", default="America/Los_Angeles", help="Timezone for a custom --symbols watchlist.")
     init_parser.add_argument("--language", default="zh-CN", help="Report language for a custom --symbols watchlist.")
     init_parser.add_argument("--providers", default=None, help="Comma/space separated providers for a custom watchlist, default: yfinance.")
+    init_parser.add_argument(
+        "--telegram-token",
+        default=None,
+        help="Telegram bot token to configure notifications (only applies with --symbols).",
+    )
+    init_parser.add_argument(
+        "--telegram-chat-id",
+        default=None,
+        help="Telegram chat id to configure notifications (only applies with --symbols).",
+    )
+    init_parser.add_argument(
+        "--feishu-webhook",
+        default=None,
+        help="Feishu custom bot webhook URL to configure notifications (only applies with --symbols).",
+    )
     init_parser.add_argument("--list-templates", action="store_true", help="List available templates.")
     init_parser.add_argument("--force", action="store_true", help="Overwrite an existing file.")
 
@@ -82,6 +100,11 @@ def main(argv: list[str] | None = None) -> None:
     doctor_parser = subparsers.add_parser("doctor", help="Check config, providers, and optional integrations.")
     doctor_parser.add_argument("--config", default="watchlist.yaml", help="Path to watchlist config.")
 
+    test_notify_parser = subparsers.add_parser(
+        "test-notify", help="Send a test message to configured notification targets."
+    )
+    test_notify_parser.add_argument("--config", default="watchlist.yaml", help="Path to watchlist config.")
+
     args = parser.parse_args(argv)
     if args.command == "init":
         _init_config(
@@ -94,6 +117,9 @@ def main(argv: list[str] | None = None) -> None:
             args.timezone,
             args.language,
             args.providers,
+            args.telegram_token,
+            args.telegram_chat_id,
+            args.feishu_webhook,
         )
     elif args.command == "import-portfolio":
         _import_portfolio(Path(args.input), Path(args.output), args.template, args.title, args.force)
@@ -122,6 +148,8 @@ def main(argv: list[str] | None = None) -> None:
         _demo(Path(args.output), args.title)
     elif args.command == "doctor":
         _doctor(Path(args.config))
+    elif args.command == "test-notify":
+        _test_notify(Path(args.config))
 
 
 def _init_config(
@@ -134,12 +162,17 @@ def _init_config(
     timezone: str,
     language: str,
     providers: str | None,
+    telegram_token: str | None = None,
+    telegram_chat_id: str | None = None,
+    feishu_webhook: str | None = None,
 ) -> None:
     if list_templates:
         print("\n".join(sorted(SAMPLE_CONFIGS)))
         return
     if path.exists() and not force:
         raise SystemExit(f"{path} already exists. Use --force to overwrite it.")
+    if bool(telegram_token) != bool(telegram_chat_id):
+        raise SystemExit("--telegram-token and --telegram-chat-id must be provided together.")
     if symbols:
         config = custom_watchlist_config(
             parse_symbols(symbols),
@@ -147,14 +180,36 @@ def _init_config(
             timezone=timezone,
             language=language,
             providers=parse_symbols(providers) if providers else None,
+            telegram_token=telegram_token,
+            telegram_chat_id=telegram_chat_id,
+            feishu_webhook=feishu_webhook,
         )
         path.write_text(config, encoding="utf-8")
         print(f"Wrote custom watchlist config to {path}")
+        _print_notification_setup_hint(path, telegram_token, telegram_chat_id, feishu_webhook)
         return
     if template not in SAMPLE_CONFIGS:
         raise SystemExit(f"Unknown template '{template}'. Available: {', '.join(sorted(SAMPLE_CONFIGS))}")
     path.write_text(SAMPLE_CONFIGS[template], encoding="utf-8")
     print(f"Wrote {template} starter config to {path}")
+
+
+def _print_notification_setup_hint(
+    path: Path,
+    telegram_token: str | None,
+    telegram_chat_id: str | None,
+    feishu_webhook: str | None,
+) -> None:
+    if not (telegram_token or telegram_chat_id or feishu_webhook):
+        return
+    print("\nSet these environment variables before running market-pulse:")
+    if telegram_token:
+        print(f"  export TELEGRAM_BOT_TOKEN={shlex.quote(telegram_token)}")
+    if telegram_chat_id:
+        print(f"  export TELEGRAM_CHAT_ID={shlex.quote(telegram_chat_id)}")
+    if feishu_webhook:
+        print(f"  export FEISHU_WEBHOOK_URL={shlex.quote(feishu_webhook)}")
+    print(f"\nThen verify it works: market-pulse test-notify --config {path}")
 
 
 def _import_portfolio(
@@ -259,6 +314,33 @@ def _site(reports_dir: Path, output_dir: Path, title: str, keep_reports: int) ->
 def _doctor(config_path: Path) -> None:
     config = load_config(config_path)
     print(format_doctor(run_doctor(config)))
+
+
+def _test_notify(config_path: Path) -> None:
+    config = load_config(config_path)
+    if not config.notifications:
+        print(
+            "No notifications are configured in this config. "
+            "Add one with, e.g.: market-pulse init --telegram-token ... --telegram-chat-id ..."
+        )
+        return
+    report = _test_notify_report()
+    for result in send_notifications(report, config.notifications):
+        print(result)
+
+
+def _test_notify_report() -> DailyReport:
+    return DailyReport(
+        title="AI Market Pulse Test",
+        generated_at=datetime.now(dt_timezone.utc),
+        timezone="UTC",
+        language="en-US",
+        analyses=[],
+        market_brief=(
+            "AI Market Pulse notification test - if you see this, your setup works!\n"
+            "AI Market Pulse 通知测试成功，配置没问题！"
+        ),
+    )
 
 
 def _demo(output_dir: Path, title: str) -> None:

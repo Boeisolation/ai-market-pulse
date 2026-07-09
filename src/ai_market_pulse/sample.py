@@ -296,6 +296,9 @@ def custom_watchlist_config(
     timezone: str = "America/Los_Angeles",
     language: str = "zh-CN",
     providers: list[str] | None = None,
+    telegram_token: str | None = None,
+    telegram_chat_id: str | None = None,
+    feishu_webhook: str | None = None,
 ) -> str:
     cleaned = [_normalize_symbol(symbol) for symbol in symbols if symbol.strip()]
     if not cleaned:
@@ -348,9 +351,37 @@ def custom_watchlist_config(
             }
             for symbol in cleaned
         ],
-        "notifications": [],
+        "notifications": _notification_targets(telegram_token, telegram_chat_id, feishu_webhook),
     }
     return yaml.safe_dump(config, allow_unicode=True, sort_keys=False)
+
+
+def _notification_targets(
+    telegram_token: str | None,
+    telegram_chat_id: str | None,
+    feishu_webhook: str | None,
+) -> list[dict]:
+    targets: list[dict] = []
+    if telegram_token and telegram_chat_id:
+        targets.append(
+            {
+                "type": "telegram",
+                "name": "telegram",
+                "enabled": True,
+                "token_env": "TELEGRAM_BOT_TOKEN",
+                "chat_id_env": "TELEGRAM_CHAT_ID",
+            }
+        )
+    if feishu_webhook:
+        targets.append(
+            {
+                "type": "feishu",
+                "name": "feishu",
+                "enabled": True,
+                "url_env": "FEISHU_WEBHOOK_URL",
+            }
+        )
+    return targets
 
 
 def parse_symbols(value: str) -> list[str]:
