@@ -1,20 +1,34 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 from typing import Iterable
 
 from .models import DailyReport, HistoryPoint
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - POSIX-only; import fails on Windows.
+    fcntl = None
+
+# "close" is intentionally excluded: models.HistoryPoint types it as `float | None`
+# because a failed fetch legitimately records close=None (see records_from_report).
+# Treating it as required here would silently discard those legitimate rows.
+REQUIRED_HISTORY_FIELDS = ("date", "symbol", "score", "stance", "risk_level")
+
 
 def load_history(path: str | Path) -> list[HistoryPoint]:
     history_path = Path(path)
     if not history_path.exists():
         return []
+    return _parse_history_lines(history_path.read_text(encoding="utf-8").splitlines())
 
+
+def _parse_history_lines(lines: Iterable[str]) -> list[HistoryPoint]:
     records: list[HistoryPoint] = []
-    for line in history_path.read_text(encoding="utf-8").splitlines():
+    for line in lines:
         if not line.strip():
             continue
         try:
@@ -25,14 +39,18 @@ def load_history(path: str | Path) -> list[HistoryPoint]:
     return records
 
 
-def attach_history(report: DailyReport, records: Iterable[HistoryPoint], max_points: int = 30) -> DailyReport:
-    merged = list(records) + records_from_report(report)
+def _dedupe_by_symbol_and_date(records: list[HistoryPoint]) -> list[HistoryPoint]:
     by_key: dict[tuple[str, str], HistoryPoint] = {}
-    for point in merged:
-        by_key[(point.symbol, point.date)] = point
+    for record in records:
+        by_key[(record.symbol, record.date)] = record
+    return sorted(by_key.values(), key=lambda item: (item.date, item.symbol))
+
+
+def attach_history(report: DailyReport, records: Iterable[HistoryPoint], max_points: int = 30) -> DailyReport:
+    merged = _dedupe_by_symbol_and_date(list(records) + records_from_report(report))
 
     by_symbol: dict[str, list[HistoryPoint]] = {}
-    for point in by_key.values():
+    for point in merged:
         by_symbol.setdefault(point.symbol, []).append(point)
 
     trimmed = {
@@ -45,9 +63,29 @@ def attach_history(report: DailyReport, records: Iterable[HistoryPoint], max_poi
 def append_history(path: str | Path, report: DailyReport) -> None:
     history_path = Path(path)
     history_path.parent.mkdir(parents=True, exist_ok=True)
-    with history_path.open("a", encoding="utf-8") as handle:
-        for record in records_from_report(report):
-            handle.write(json.dumps(record.__dict__, ensure_ascii=False, sort_keys=True) + "\n")
+    history_path.touch(exist_ok=True)
+    lock_path = history_path.with_name(history_path.name + ".lock")
+    with lock_path.open("w", encoding="utf-8") as lock_handle:
+        if fcntl is not None:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+        try:
+            existing = _parse_history_lines(history_path.read_text(encoding="utf-8").splitlines())
+            merged = _dedupe_by_symbol_and_date(existing + records_from_report(report))
+            # Write to a temp file and atomically replace the target so a crash or
+            # kill mid-write can never leave history.jsonl empty or half-written —
+            # readers always see either the old file or the fully-written new one.
+            tmp_path = history_path.with_name(history_path.name + ".tmp")
+            tmp_path.write_text(
+                "".join(
+                    json.dumps(record.__dict__, ensure_ascii=False, sort_keys=True) + "\n"
+                    for record in merged
+                ),
+                encoding="utf-8",
+            )
+            os.replace(tmp_path, history_path)
+        finally:
+            if fcntl is not None:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
 
 
 def records_from_report(report: DailyReport) -> list[HistoryPoint]:
@@ -81,4 +119,8 @@ def records_from_report(report: DailyReport) -> list[HistoryPoint]:
 
 def _filter_history(raw: dict) -> dict:
     allowed = set(HistoryPoint.__dataclass_fields__.keys())
-    return {key: raw.get(key) for key in allowed}
+    filtered = {key: raw[key] for key in allowed if key in raw}
+    missing_or_null = [field for field in REQUIRED_HISTORY_FIELDS if filtered.get(field) is None]
+    if missing_or_null:
+        raise ValueError(f"history row missing required fields: {missing_or_null}")
+    return filtered
