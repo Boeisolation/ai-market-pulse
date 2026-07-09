@@ -86,6 +86,7 @@ def render_html(report: DailyReport) -> str:
     portfolio = _portfolio_html(report.portfolio)
     benchmarks = _benchmarks_html(report.benchmarks)
     ai_brief = _ai_brief_html(report.portfolio_ai_summary)
+    summary_strip = _summary_strip_html(report)
     insights = _insights_html(report)
     default_lang = "zh" if report.language.lower().startswith("zh") else "en"
     high_risk = sum(1 for item in report.analyses if item.signal.risk_level == "high")
@@ -102,6 +103,12 @@ def render_html(report: DailyReport) -> str:
     .report-brief {{ margin: 18px 0; }}
     .summary-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 18px 0; }}
     .report-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(295px, 1fr)); gap: 16px; }}
+    .strip-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin: 18px 0; }}
+    .strip-row {{ background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }}
+    .strip-row .strip-top {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+    .strip-row .strip-symbol {{ font-weight: 760; }}
+    .strip-row .strip-meta {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }}
+    .strip-score {{ font-size: 18px; font-weight: 800; line-height: 1; }}
     .top {{ display: flex; align-items: start; justify-content: space-between; gap: 12px; }}
     .symbol {{ font-size: 22px; font-weight: 780; }}
     .score {{ min-width: 54px; text-align: right; font-size: 30px; line-height: 1; font-weight: 840; color: var(--brand-strong); }}
@@ -137,6 +144,7 @@ def render_html(report: DailyReport) -> str:
     </aside>
   </header>
   <section class="brief report-brief">{brief}<br><span class="muted">{lang("Quant research automation only. This report is not financial advice and does not place trades.", "仅用于量化研究自动化。本报告不构成投资建议，也不会下单交易。")}</span></section>
+  {summary_strip}
   {ai_brief}
   {portfolio}
   {benchmarks}
@@ -387,6 +395,38 @@ def _insights_html(report: DailyReport) -> str:
 """
 
 
+def _summary_strip_html(report: DailyReport) -> str:
+    if not report.analyses:
+        return ""
+    rows = "".join(_summary_strip_row(item) for item in report.analyses)
+    heading = lang("At a Glance", "一览")
+    note = lang(
+        "Score, change, benchmark verdict, and risk for every tracked symbol in one scan.",
+        "一次扫描即可看到每个标的的评分、涨跌幅、基准对比结论与风险等级。",
+    )
+    return f'<h2>{heading}</h2><p class="section-note">{note}</p><section class="strip-grid">{rows}</section>'
+
+
+def _summary_strip_row(item: AssetAnalysis) -> str:
+    symbol = html.escape(item.asset.symbol)
+    change_class = _value_class(item.snapshot.change_pct)
+    score_class = _score_class(item.signal.score)
+    benchmark_badge = _verdict_badge(item.benchmark.verdict) if item.benchmark else ""
+    return f"""
+<div class="strip-row" data-symbol="{symbol}" data-risk="{html.escape(item.signal.risk_level)}">
+  <div class="strip-top">
+    <span class="strip-symbol">{symbol}</span>
+    <span class="strip-score {score_class}">{item.signal.score}</span>
+  </div>
+  <div class="{change_class}">{html.escape(_pct(item.snapshot.change_pct))}</div>
+  <div class="strip-meta">
+    {benchmark_badge}
+    <span class="pill risk-{html.escape(item.signal.risk_level)}">{lang("risk", "风险")} {html.escape(item.signal.risk_level)}</span>
+  </div>
+</div>
+"""
+
+
 def _html_card(item: AssetAnalysis, history: list[HistoryPoint]) -> str:
     reasons = "".join(f"<li>{html.escape(reason)}</li>" for reason in item.signal.reasons)
     warnings = "".join(f"<li>{html.escape(warning)}</li>" for warning in item.warnings)
@@ -591,6 +631,14 @@ def _value_class(value: float | int | str | None) -> str:
     if number < 0:
         return "loss"
     return ""
+
+
+def _score_class(score: int) -> str:
+    if score >= 70:
+        return "gain"
+    if score >= 40:
+        return "risk-medium"
+    return "loss"
 
 
 def _trend_text(values: list[int]) -> str:
