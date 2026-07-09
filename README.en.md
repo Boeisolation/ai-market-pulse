@@ -78,7 +78,7 @@ Then open:
 - Data freshness checks: latest trading day, source, row count, and stale/missing data warnings.
 - Multi-provider data foundation: yfinance by default, optional AkShare, Baostock, and Tushare for mainland A-shares.
 - Optional OpenAI-compatible asset and portfolio summaries with prompt templates and local cache.
-- Push notifications through Telegram, Slack, Discord, Feishu, WeCom, generic webhooks, or email.
+- Push notifications through Telegram, Slack, Discord, Feishu, WeCom, generic webhooks, or email; run `market-pulse init --telegram-token ... --telegram-chat-id ...` or `--feishu-webhook ...` for one-command setup — see [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md).
 - GitHub Actions and GitHub Pages workflows for zero-server daily publishing.
 - EN / 中文 toggle in generated HTML pages.
 

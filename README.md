@@ -78,7 +78,7 @@ market-pulse demo --output demo
 - 数据新鲜度：最新交易日、数据源、历史行数、滞后或缺失风险提示。
 - 多数据源：默认 yfinance，可选 AkShare、Baostock、Tushare 增强 A 股覆盖。
 - 可选 OpenAI 兼容模型：单股总结、组合总结、prompt 模板、本地缓存。
-- 推送通知：Telegram、Slack、Discord、飞书、企业微信、通用 webhook、邮件。
+- 推送通知：Telegram、Slack、Discord、飞书、企业微信、通用 webhook、邮件；`market-pulse init --telegram-token ... --telegram-chat-id ...` 或 `--feishu-webhook ...` 一条命令即可配置 Telegram/飞书，详见 [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md)。
 - GitHub Actions 与 GitHub Pages：无需服务器也能每日发布。
 - 生成的 HTML 页面支持 EN / 中文切换。
 
