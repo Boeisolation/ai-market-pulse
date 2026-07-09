@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import traceback
 from dataclasses import dataclass, replace
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -309,8 +310,9 @@ class ConsoleHandler(SimpleHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
             result = run_console_analysis(options_from_payload(payload), self.root)
             self._send_json(result)
-        except Exception as exc:
-            self._send_json({"error": str(exc)}, status=400)
+        except Exception:
+            traceback.print_exc()
+            self._send_json({"error": "Analysis failed. Check the server console for details."}, status=400)
 
     def _send_html(self, body: str) -> None:
         encoded = body.encode("utf-8")
