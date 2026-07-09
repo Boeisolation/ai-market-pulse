@@ -1,26 +1,33 @@
 <div align="center">
 
-# AI Market Pulse
+![AI Market Pulse](docs/assets/banner-zh.svg)
 
-**把任何一份自选股清单，变成每天的 AI 市场研究报告——想深入研究，它是量化研究驾驶舱；不想折腾，它是一个不用写代码的每日报告工具。**
+<!-- 推到 GitHub 后把下面的 <owner> 换成你的用户名/组织名，CI 徽章会自动生效。 -->
+[![English](https://img.shields.io/badge/lang-English-0F766E?style=flat-square)](README.md)
+[![简体中文](https://img.shields.io/badge/lang-简体中文-14181A?style=flat-square)](README.zh-CN.md)
 
-中文 · [English](README.md)
-
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-0f766e)](.github/workflows/ci.yml)
+[![CI](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-b45309.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-4f46e5.svg)](pyproject.toml)
+[![仅用于研究自动化](https://img.shields.io/badge/用途-仅用于研究自动化-b45309.svg)](#风险提示)
 
 </div>
 
 ---
 
+### 目录
+
+[它不只是一个定时脚本](#它不只是一个定时脚本也不是只服务一类人) · [60 秒体验完整产品](#60-秒体验完整产品) · [产品界面](#产品界面) · [核心能力](#核心能力) · [快速开始](#快速开始) · [数据源](#数据源) · [启用 AI 总结](#启用-ai-总结) · [发布](#发布) · [风险提示](#风险提示)
+
+---
+
 ## 它不只是一个定时脚本，也不是只服务一类人
 
-**如果你习惯看信号和基准**：它是一个轻量的量化研究驾驶舱——自选股筛选、规则驱动的信号评分、基准相对强弱、组合归因、风险发现，全部渲染成 Markdown/HTML/JSON 日报、Web Dashboard 和可发布的静态研究站点。它支持交易信号复盘、组合风险检查、盘前/盘后研究这类量化工作流，但不连接券商、不自动下单、不承诺收益——它是决策辅助，不是下单通道。
+| 量化研究者 | 普通持仓者 |
+|---|---|
+| 一个轻量的量化研究驾驶舱——自选股筛选、规则驱动的信号评分、基准相对强弱、组合归因、风险发现，全部渲染成 Markdown/HTML/JSON 日报、Web Dashboard 和可发布的静态研究站点。支持交易信号复盘、组合风险检查、盘前/盘后研究这类量化工作流，但不连接券商、不自动下单、不承诺收益——它是决策辅助，不是下单通道。 | 打开本地控制台，输入代码，点一下运行——不用写 YAML，不用改配置文件，不用写代码。你拿到的是同一份日报、同一个风险视图、同一个 Dashboard，只是不需要先搞懂背后那套量化逻辑才能用起来。 |
 
-**如果你只是想每天看看自己关心的几只股票**：打开本地控制台，输入代码，点一下运行——不用写 YAML，不用改配置文件，不用写代码。你拿到的是同一份日报、同一个风险视图、同一个 Dashboard，只是不需要先搞懂背后那套量化逻辑才能用起来。
-
-本项目是原创实现，灵感来自”AI 股票每日分析工具”的真实需求，不是 fork，也不是复制其他仓库。
+本项目是原创实现，灵感来自"AI 股票每日分析工具"的真实需求，不是 fork，也不是复制其他仓库。
 
 ![AI Market Pulse 站点预览](docs/assets/site-preview.png)
 

@@ -1,16 +1,23 @@
 <div align="center">
 
-# AI Market Pulse
+![AI Market Pulse](docs/assets/banner.svg)
 
-**Turn any watchlist into a daily AI market research report — a quant-grade research cockpit if you want to dig in, a zero-code daily report generator if you don't.**
+<!-- Replace <owner> below with your GitHub username/org once this is pushed — the CI badge goes live automatically. -->
+[![English](https://img.shields.io/badge/lang-English-14181A?style=flat-square)](README.md)
+[![简体中文](https://img.shields.io/badge/lang-简体中文-0F766E?style=flat-square)](README.zh-CN.md)
 
-[中文](README.zh-CN.md) · English
-
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-0f766e)](.github/workflows/ci.yml)
+[![CI](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-b45309.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-4f46e5.svg)](pyproject.toml)
+[![Use: Research Automation Only](https://img.shields.io/badge/Use-Research%20Automation%20Only-b45309.svg)](#safety)
 
 </div>
+
+---
+
+### Contents
+
+[Why It Feels Different](#why-it-feels-different) · [See It In 60 Seconds](#see-it-in-60-seconds) · [Product Surfaces](#product-surfaces) · [Highlights](#highlights) · [Quick Start](#quick-start) · [Data Providers](#data-providers) · [AI Summaries](#enable-ai-summaries) · [Publishing](#publishing) · [Safety](#safety)
 
 ---
 
@@ -18,9 +25,9 @@
 
 AI Market Pulse is not just a scheduled stock script, and it isn't only for one kind of user.
 
-**If you think in signals and benchmarks**, it's a lightweight quant research cockpit: watchlist screening, rule-based signal scoring, benchmark-relative strength, portfolio attribution, and risk findings, all rendered into Markdown/HTML/JSON reports, a web dashboard, and a static research site you can publish. It supports quant-style research workflows — signal review, portfolio risk checks, pre-trade decision support — but it does not connect to brokers, place orders, or promise returns. It's decision support, not an execution layer.
-
-**If you just want to check on the stocks you follow**, open the local console, type in your tickers, and click Run — no YAML, no config file, no code required. You get the same daily report, risk view, and dashboard the research workflow above produces; you just don't need to understand any of the machinery under it to start using it.
+| Quant researcher | Everyday stockholder |
+|---|---|
+| A lightweight quant research cockpit: watchlist screening, rule-based signal scoring, benchmark-relative strength, portfolio attribution, and risk findings — rendered into Markdown/HTML/JSON reports, a web dashboard, and a static research site you can publish. It supports signal review, portfolio risk checks, and pre-trade decision support, but it does not connect to brokers, place orders, or promise returns. Decision support, not an execution layer. | Open the local console, type in your tickers, click **Run** — no YAML, no config file, no code required. You get the exact same daily report, risk view, and dashboard the research workflow produces; you just don't need to understand the machinery under it to start using it. |
 
 It is an original implementation inspired by the demand for daily AI stock analysis tools. It is not a fork or copy of another repository.
 
