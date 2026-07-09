@@ -17,6 +17,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
+      - name: Restore history cache
+        uses: actions/cache@v4
+        with:
+          path: data/history.jsonl
+          key: market-pulse-history-v1-${{ github.run_id }}
+          restore-keys: |
+            market-pulse-history-v1-
       - name: Generate report
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
