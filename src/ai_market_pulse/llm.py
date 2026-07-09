@@ -3,12 +3,15 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import urllib.request
 from typing import Any
 
 from .config import LLMSettings
 from .models import AssetAnalysis, DailyReport
+
+_PLACEHOLDER_PATTERN = re.compile(r"\{(\w+)\}")
 
 
 def summarize_with_llm(analysis: AssetAnalysis, settings: LLMSettings, language: str) -> str | None:
@@ -195,7 +198,15 @@ def _render_prompt_template(
         key: json.dumps(value, ensure_ascii=False, indent=2) if not isinstance(value, str) else value
         for key, value in values.items()
     }
-    return template.format(**rendered_values)
+    # A plain str.format/format_map call aborts on the first ill-formed format
+    # spec it hits (e.g. a literal JSON example like {"foo": 1}), discarding
+    # every other valid substitution in the template. Matching only simple
+    # {identifier} placeholders and leaving anything else untouched means one
+    # stray brace can't take down substitutions elsewhere in the template.
+    return _PLACEHOLDER_PATTERN.sub(
+        lambda match: rendered_values.get(match.group(1), match.group(0)),
+        template,
+    )
 
 
 def _cache_key(payload: dict[str, Any]) -> str:
