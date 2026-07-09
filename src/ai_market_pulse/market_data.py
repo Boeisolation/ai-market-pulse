@@ -14,13 +14,14 @@ class MarketDataError(RuntimeError):
     pass
 
 
-Provider = Callable[[Asset, int], tuple[Asset, PriceSnapshot, pd.DataFrame]]
+Provider = Callable[[Asset, int, date | None], tuple[Asset, PriceSnapshot, pd.DataFrame]]
 
 
 def fetch_history(
     asset: Asset,
     lookback_days: int,
     providers: list[str] | tuple[str, ...] | None = None,
+    as_of: date | None = None,
 ) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     provider_names = list(providers or ["akshare", "yfinance"])
     errors: list[str] = []
@@ -30,7 +31,7 @@ def fetch_history(
             errors.append(f"{provider_name}: unsupported provider")
             continue
         try:
-            return provider(asset, lookback_days)
+            return provider(asset, lookback_days, as_of)
         except MarketDataError as exc:
             errors.append(f"{provider_name}: {exc}")
     raise MarketDataError(f"No provider returned data for {asset.symbol}. " + " | ".join(errors))
@@ -49,7 +50,9 @@ def _provider(name: str) -> Provider | None:
     return None
 
 
-def _fetch_yfinance(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+def _fetch_yfinance(
+    asset: Asset, lookback_days: int, as_of: date | None = None
+) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     try:
         import yfinance as yf
     except ImportError as exc:
@@ -76,7 +79,9 @@ def _fetch_yfinance(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnaps
     return replace(asset, name=name, currency=currency), snapshot, history
 
 
-def _fetch_akshare(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+def _fetch_akshare(
+    asset: Asset, lookback_days: int, as_of: date | None = None
+) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     code = _a_share_code(asset)
     if not code:
         raise MarketDataError("AkShare provider only handles mainland A-share symbols.")
@@ -85,7 +90,7 @@ def _fetch_akshare(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapsh
     except ImportError as exc:
         raise MarketDataError("akshare is not installed. Run `pip install -e .[cn]` to enable it.") from exc
 
-    end_date = date.today()
+    end_date = as_of or date.today()
     start_date = end_date - timedelta(days=max(lookback_days * 2, 90))
     try:
         raw = ak.stock_zh_a_hist(
@@ -116,7 +121,9 @@ def _fetch_akshare(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapsh
     return replace(asset, name=name, currency=currency), snapshot, history
 
 
-def _fetch_baostock(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+def _fetch_baostock(
+    asset: Asset, lookback_days: int, as_of: date | None = None
+) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     code = _a_share_code(asset)
     if not code:
         raise MarketDataError("Baostock provider only handles mainland A-share symbols.")
@@ -127,7 +134,7 @@ def _fetch_baostock(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnaps
 
     exchange = "sh" if code.startswith(("6", "5", "9")) else "sz"
     bs_code = f"{exchange}.{code}"
-    end_date = date.today()
+    end_date = as_of or date.today()
     start_date = end_date - timedelta(days=max(lookback_days * 2, 90))
     login = bs.login()
     if getattr(login, "error_code", "0") != "0":
@@ -156,7 +163,9 @@ def _fetch_baostock(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnaps
     return replace(asset, name=name, currency=currency), snapshot, history
 
 
-def _fetch_tushare(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+def _fetch_tushare(
+    asset: Asset, lookback_days: int, as_of: date | None = None
+) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     code = _a_share_code(asset)
     if not code:
         raise MarketDataError("Tushare provider only handles mainland A-share symbols.")
@@ -169,7 +178,7 @@ def _fetch_tushare(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapsh
         raise MarketDataError("tushare is not installed. Run `pip install -e .[tushare]` to enable it.") from exc
     suffix = "SH" if code.startswith(("6", "5", "9")) else "SZ"
     ts_code = f"{code}.{suffix}"
-    end_date = date.today()
+    end_date = as_of or date.today()
     start_date = end_date - timedelta(days=max(lookback_days * 2, 90))
     pro = ts.pro_api(token)
     try:

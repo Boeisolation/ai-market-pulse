@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from ai_market_pulse.benchmarks import BenchmarkData, attach_benchmark_comparisons, build_data_freshness
+from ai_market_pulse import benchmarks as benchmarks_module
+from ai_market_pulse.benchmarks import (
+    BenchmarkData,
+    attach_benchmark_comparisons,
+    build_data_freshness,
+    fetch_benchmarks,
+)
 from ai_market_pulse.config import BenchmarkSettings
 from ai_market_pulse.models import Asset, AssetAnalysis, PriceSnapshot, SignalScore
 
@@ -36,6 +42,53 @@ def test_build_data_freshness_flags_stale_data() -> None:
     assert freshness.status == "stale"
     assert freshness.age_days == 8
     assert "verify data freshness" in freshness.message
+
+
+def test_fetch_benchmarks_exercises_fetch_history_and_forwards_as_of(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_fetch_history(asset, lookback_days, providers, as_of=None):
+        calls.append(
+            {
+                "symbol": asset.symbol,
+                "lookback_days": lookback_days,
+                "providers": providers,
+                "as_of": as_of,
+            }
+        )
+        snapshot = _snapshot(asset.symbol)
+        frame_history = _history_frame()
+        return asset, snapshot, frame_history
+
+    monkeypatch.setattr(benchmarks_module, "fetch_history", fake_fetch_history)
+
+    settings = BenchmarkSettings(symbols=["SPY", "QQQ"], default_by_market={}, compare={})
+    today = date(2026, 7, 8)
+
+    data, snapshots = fetch_benchmarks([], settings, ["yfinance"], 60, today)
+
+    assert calls, "fetch_benchmarks must call market_data.fetch_history"
+    assert {call["symbol"] for call in calls} == {"SPY", "QQQ"}
+    assert all(call["as_of"] == today for call in calls)
+    assert {snapshot.symbol for snapshot in snapshots} == {"SPY", "QQQ"}
+    assert set(data.keys()) == {"SPY", "QQQ"}
+
+
+def _history_frame():
+    import pandas as pd
+
+    index = pd.date_range("2026-01-01", periods=30, freq="B")
+    close = [float(i + 1) for i in range(30)]
+    return pd.DataFrame(
+        {
+            "Date": index,
+            "Open": close,
+            "High": [c + 1 for c in close],
+            "Low": [c - 1 for c in close],
+            "Close": close,
+            "Volume": [100] * 30,
+        }
+    )
 
 
 def _snapshot(symbol: str, end_date: str = "2026-07-08") -> PriceSnapshot:

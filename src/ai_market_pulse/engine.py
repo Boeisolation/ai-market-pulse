@@ -25,6 +25,7 @@ def run_analysis(config: AppConfig, config_path: str | None = None) -> DailyRepo
                 asset,
                 config.analysis.lookback_days,
                 config.data.providers,
+                as_of=generated_at.date(),
             )
             metrics = calculate_indicators(history)
             freshness = build_data_freshness(snapshot, generated_at.date(), config.benchmarks.stale_after_days)

@@ -44,7 +44,7 @@ def _config(assets: list[Asset]) -> AppConfig:
 
 
 def test_run_analysis_builds_report_with_position(monkeypatch) -> None:
-    def fake_fetch_history(asset, lookback_days, providers):
+    def fake_fetch_history(asset, lookback_days, providers, as_of=None):
         frame = _fake_history_df()
         snapshot = PriceSnapshot(
             symbol=asset.symbol,
@@ -77,7 +77,7 @@ def test_run_analysis_builds_report_with_position(monkeypatch) -> None:
 
 
 def test_run_analysis_handles_failed_fetch(monkeypatch) -> None:
-    def boom(asset, lookback_days, providers):
+    def boom(asset, lookback_days, providers, as_of=None):
         raise MarketDataError("no data")
 
     monkeypatch.setattr(engine, "fetch_history", boom)
