@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import smtplib
+import socket
 import ssl
 import urllib.parse
 import urllib.request
@@ -52,17 +54,20 @@ def _send_target(
         url = _setting(settings, "url", "url_env")
         if not url:
             raise ValueError(f"{kind} requires url/url_env")
+        _assert_safe_url(url)
         payload = {"content": message[:1900]} if kind == "discord" else {"text": message[:3900]}
         _post_json(url, payload)
     elif kind == "feishu":
         url = _setting(settings, "url", "url_env")
         if not url:
             raise ValueError("feishu requires url/url_env")
+        _assert_safe_url(url)
         _post_json(url, {"msg_type": "text", "content": {"text": message[:3900]}})
     elif kind == "wecom":
         url = _setting(settings, "url", "url_env")
         if not url:
             raise ValueError("wecom requires url/url_env")
+        _assert_safe_url(url)
         _post_json(url, {"msgtype": "text", "text": {"content": message[:3900]}})
     elif kind == "email":
         _send_email(settings, render_markdown(report), html_path)
@@ -106,6 +111,43 @@ def _signed(value: float | int | None) -> str:
     return f"{sign}{float(value):,.2f}"
 
 
+def _assert_safe_url(url: str) -> None:
+    # Resolves and checks the hostname once at call time, immediately before
+    # connecting. A sophisticated attacker controlling DNS for an
+    # already-configured webhook host could in principle rebind the name to an
+    # unsafe address between this check and the connection (TOCTOU); fully
+    # closing that gap would require pinning the validated IP at the
+    # connection layer, which this stdlib-only client does not do. The
+    # practical, easily-reachable bypass — a validated URL redirecting to an
+    # unsafe address — is closed separately by _NoRedirectHandler below.
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError(f"Unsafe notification URL scheme: {parsed.scheme!r}")
+    if not parsed.hostname:
+        raise ValueError("Notification URL is missing a hostname")
+    resolved_ip = ipaddress.ip_address(socket.gethostbyname(parsed.hostname))
+    # `is_global` is the complete "definitely publicly routable" check — unlike
+    # enumerating is_private/is_loopback/is_link_local/is_reserved, it also
+    # correctly rejects ranges like 100.64.0.0/10 (carrier-grade NAT) that
+    # is_private leaves unflagged. Multicast addresses report is_global=True
+    # in Python's ipaddress module despite not being valid unicast targets,
+    # so they're rejected separately.
+    if not resolved_ip.is_global or resolved_ip.is_multicast:
+        raise ValueError(f"Unsafe notification URL host resolves to {resolved_ip}")
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # A validated public URL could still redirect to an internal/loopback/
+        # metadata address; refusing to follow closes that _assert_safe_url bypass.
+        return None
+
+
+def _urlopen(request: urllib.request.Request, timeout: int):
+    opener = urllib.request.build_opener(_NoRedirectHandler())
+    return opener.open(request, timeout=timeout)
+
+
 def _post_json(url: str, payload: dict) -> None:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
@@ -114,7 +156,7 @@ def _post_json(url: str, payload: dict) -> None:
         headers={"Content-Type": "application/json", "User-Agent": "ai-market-pulse/0.1"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=20) as response:
+    with _urlopen(request, timeout=20) as response:
         if response.status >= 400:
             raise RuntimeError(f"HTTP {response.status}")
 
