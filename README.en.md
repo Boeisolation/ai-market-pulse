@@ -17,13 +17,15 @@
 
 ### Contents
 
-[Why It Feels Different](#why-it-feels-different) · [See It In 60 Seconds](#see-it-in-60-seconds) · [Product Surfaces](#product-surfaces) · [Highlights](#highlights) · [Quick Start](#quick-start) · [Data Providers](#data-providers) · [AI Summaries](#enable-ai-summaries) · [Publishing](#publishing) · [Safety](#safety)
+[What This Is](#what-this-is) · [See It In 60 Seconds](#see-it-in-60-seconds) · [Product Surfaces](#product-surfaces) · [Highlights](#highlights) · [Quick Start](#quick-start) · [Data Providers](#data-providers) · [AI Summaries](#enable-ai-summaries) · [Publishing](#publishing) · [Safety](#safety)
 
 ---
 
-## Why It Feels Different
+## What This Is
 
-AI Market Pulse is not just a scheduled stock script, and it isn't only for one kind of user.
+> **AI Market Pulse is an AI + quant trading research cockpit for watchlist screening, trading signal review, benchmark comparison, portfolio attribution, risk control, automated reporting, and static publishing.**
+
+It's not just a scheduled stock script, and it isn't only for one kind of user:
 
 | Quant researcher | Everyday stockholder |
 |---|---|
