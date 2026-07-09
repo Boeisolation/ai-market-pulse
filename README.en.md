@@ -2,11 +2,10 @@
 
 ![AI Market Pulse](docs/assets/banner.svg)
 
-<!-- Replace <owner> below with your GitHub username/org once this is pushed — the CI badge goes live automatically. -->
 [![English](https://img.shields.io/badge/English-14181A?style=for-the-badge)](README.en.md)
 [![简体中文](https://img.shields.io/badge/简体中文-0F766E?style=for-the-badge)](README.md)
 
-[![CI](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml)
+[![CI](https://github.com/SilentFleetKK/ai-market-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/SilentFleetKK/ai-market-pulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-b45309.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-4f46e5.svg)](pyproject.toml)
 [![Use: Research Automation Only](https://img.shields.io/badge/Use-Research%20Automation%20Only-b45309.svg)](#safety)
@@ -86,7 +85,7 @@ Then open:
 ## Quick Start
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/SilentFleetKK/ai-market-pulse.git
 cd ai-market-pulse
 python -m venv .venv
 source .venv/bin/activate

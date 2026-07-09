@@ -2,11 +2,10 @@
 
 ![AI Market Pulse](docs/assets/banner-zh.svg)
 
-<!-- 推到 GitHub 后把下面的 <owner> 换成你的用户名/组织名，CI 徽章会自动生效。 -->
 [![简体中文](https://img.shields.io/badge/简体中文-14181A?style=for-the-badge)](README.md)
 [![English](https://img.shields.io/badge/English-0F766E?style=for-the-badge)](README.en.md)
 
-[![CI](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml)
+[![CI](https://github.com/SilentFleetKK/ai-market-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/SilentFleetKK/ai-market-pulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-b45309.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-4f46e5.svg)](pyproject.toml)
 [![仅用于研究自动化](https://img.shields.io/badge/用途-仅用于研究自动化-b45309.svg)](#风险提示)
@@ -86,7 +85,7 @@ market-pulse demo --output demo
 ## 快速开始
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/SilentFleetKK/ai-market-pulse.git
 cd ai-market-pulse
 python -m venv .venv
 source .venv/bin/activate
