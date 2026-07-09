@@ -11,7 +11,8 @@ from urllib.parse import quote
 
 import yaml
 
-from .config import load_config_from_mapping
+from . import notify
+from .config import NotificationTarget, load_config_from_mapping
 from .dashboard import write_dashboard
 from .engine import run_analysis
 from .history import append_history, attach_history, load_history
@@ -35,6 +36,9 @@ class ConsoleOptions:
     use_ai: bool
     build_dashboard: bool
     build_site: bool
+    telegram_token: str | None = None
+    telegram_chat_id: str | None = None
+    feishu_webhook: str | None = None
 
 
 def run_console(host: str = "127.0.0.1", port: int = 8766, root: str | Path = ".") -> None:
@@ -83,6 +87,9 @@ def render_console_html() -> str:
     .status-box {{ min-height: 190px; }}
     .status-line {{ margin: 0; white-space: pre-wrap; word-break: break-word; }}
     .error-box {{ color: var(--red); }}
+    .notify-details {{ border: 1px solid var(--line); border-radius: 8px; padding: 10px 11px; }}
+    .notify-details summary {{ cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 760; }}
+    .notify-details .form-grid {{ margin-top: 12px; }}
     @media (max-width: 900px) {{ .console-grid, .switch-row {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
@@ -129,6 +136,23 @@ def render_console_html() -> str:
         <label class="checkline"><input type="checkbox" name="buildSite" checked> <span data-i18n-en>Build static site</span><span data-i18n-zh>生成静态站点</span></label>
         <label class="checkline"><input type="checkbox" name="useAi"> <span data-i18n-en>Use AI summaries</span><span data-i18n-zh>启用 AI 总结</span></label>
       </div>
+      <details class="notify-details">
+        <summary><span data-i18n-en>Push Notifications (optional)</span><span data-i18n-zh>推送通知（可选）</span></summary>
+        <div class="form-grid">
+          <div class="field">
+            <label for="telegramToken"><span data-i18n-en>Telegram Bot Token</span><span data-i18n-zh>Telegram 机器人 Token</span></label>
+            <input id="telegramToken" name="telegramToken" placeholder="123456:ABC-DEF...">
+          </div>
+          <div class="field">
+            <label for="telegramChatId"><span data-i18n-en>Telegram Chat ID</span><span data-i18n-zh>Telegram 会话 ID</span></label>
+            <input id="telegramChatId" name="telegramChatId" placeholder="-100123456789">
+          </div>
+          <div class="field">
+            <label for="feishuWebhook"><span data-i18n-en>Feishu Webhook URL</span><span data-i18n-zh>飞书 Webhook 地址</span></label>
+            <input id="feishuWebhook" name="feishuWebhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+          </div>
+        </div>
+      </details>
       <button class="primary-button" type="submit"><span data-i18n-en>Run Analysis</span><span data-i18n-zh>开始分析</span></button>
     </form>
     <section class="panel status-box" aria-live="polite">
@@ -173,6 +197,12 @@ def render_console_html() -> str:
       if (!href) return "";
       return '<a class="result-link" href="' + esc(href) + '" target="_blank" rel="noopener"><strong>' + esc(label) + '</strong><span>' + esc(text("Open", "打开")) + '</span></a>';
     }}
+    function notificationRows(notifications) {{
+      if (!notifications || !notifications.length) return "";
+      return notifications.map(function (line) {{
+        return '<div class="result-link"><strong>' + esc(text("Notification", "推送通知")) + '</strong><span>' + esc(line) + '</span></div>';
+      }}).join("");
+    }}
     form.addEventListener("submit", async function (event) {{
       event.preventDefault();
       button.disabled = true;
@@ -186,7 +216,10 @@ def render_console_html() -> str:
         includeNews: form.includeNews.checked,
         useAi: form.useAi.checked,
         buildDashboard: form.buildDashboard.checked,
-        buildSite: form.buildSite.checked
+        buildSite: form.buildSite.checked,
+        telegramToken: form.telegramToken.value,
+        telegramChatId: form.telegramChatId.value,
+        feishuWebhook: form.feishuWebhook.value
       }};
       try {{
         var response = await fetch("/api/analyze", {{
@@ -202,7 +235,8 @@ def render_console_html() -> str:
           linkRow(text("Dashboard", "Dashboard"), body.links.dashboard),
           linkRow(text("Static site", "静态站点"), body.links.site),
           linkRow("JSON", body.links.json),
-          linkRow("Markdown", body.links.markdown)
+          linkRow("Markdown", body.links.markdown),
+          notificationRows(body.notifications)
         ].join("");
       }} catch (error) {{
         setStatus(error.message || String(error), true);
@@ -244,6 +278,9 @@ def options_from_payload(payload: dict[str, Any]) -> ConsoleOptions:
         use_ai=bool(payload.get("useAi", False)),
         build_dashboard=bool(payload.get("buildDashboard", True)),
         build_site=bool(payload.get("buildSite", True)),
+        telegram_token=_optional_str(payload.get("telegramToken")),
+        telegram_chat_id=_optional_str(payload.get("telegramChatId")),
+        feishu_webhook=_optional_str(payload.get("feishuWebhook")),
     )
 
 
@@ -278,6 +315,11 @@ def run_console_analysis(options: ConsoleOptions, root: str | Path = ".") -> dic
     if options.build_site:
         site_result = build_site(reports_dir, site_dir, title=options.title)
 
+    targets = _notification_targets(options)
+    notification_results = (
+        notify.send_notifications(report, targets, html_path=paths["html"]) if targets else []
+    )
+
     return {
         "symbols": [analysis.asset.symbol for analysis in report.analyses],
         "links": {
@@ -287,7 +329,31 @@ def run_console_analysis(options: ConsoleOptions, root: str | Path = ".") -> dic
             "dashboard": _href(root_path, dashboard_path) if dashboard_path else None,
             "site": _href(root_path, site_result.index_path) if site_result else None,
         },
+        "notifications": notification_results,
     }
+
+
+def _notification_targets(options: ConsoleOptions) -> list[NotificationTarget]:
+    targets: list[NotificationTarget] = []
+    if options.telegram_token and options.telegram_chat_id:
+        targets.append(
+            NotificationTarget(
+                type="telegram",
+                name="telegram",
+                enabled=True,
+                settings={"token": options.telegram_token, "chat_id": options.telegram_chat_id},
+            )
+        )
+    if options.feishu_webhook:
+        targets.append(
+            NotificationTarget(
+                type="feishu",
+                name="feishu",
+                enabled=True,
+                settings={"url": options.feishu_webhook},
+            )
+        )
+    return targets
 
 
 class ConsoleHandler(SimpleHTTPRequestHandler):
@@ -339,6 +405,11 @@ def _bind_server(host: str, port: int, root: Path) -> ThreadingHTTPServer:
         except OSError:
             continue
     raise OSError(f"No available port found from {port} to {port + 19}.")
+
+
+def _optional_str(value: object) -> str | None:
+    text = str(value).strip() if value is not None else ""
+    return text or None
 
 
 def _relative_path(value: object, default: str) -> Path:

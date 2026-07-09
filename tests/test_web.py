@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import pytest
 
-from ai_market_pulse import engine
+from ai_market_pulse import engine, notify
 from ai_market_pulse.models import PriceSnapshot
 from ai_market_pulse.web import ConsoleHandler, options_from_payload, render_console_html, run_console_analysis
 
@@ -76,6 +76,29 @@ def test_options_from_payload_rejects_empty_symbols() -> None:
         options_from_payload({"symbols": ""})
 
 
+def test_options_from_payload_parses_notification_fields_when_present() -> None:
+    options = options_from_payload(
+        {
+            "symbols": "AAPL",
+            "telegramToken": "tg-token",
+            "telegramChatId": "tg-chat",
+            "feishuWebhook": "https://feishu.example/webhook",
+        }
+    )
+
+    assert options.telegram_token == "tg-token"
+    assert options.telegram_chat_id == "tg-chat"
+    assert options.feishu_webhook == "https://feishu.example/webhook"
+
+
+def test_options_from_payload_defaults_notification_fields_to_none() -> None:
+    options = options_from_payload({"symbols": "AAPL"})
+
+    assert options.telegram_token is None
+    assert options.telegram_chat_id is None
+    assert options.feishu_webhook is None
+
+
 def test_run_console_analysis_writes_reports_and_returns_links(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(engine, "fetch_history", _fake_fetch_history)
     monkeypatch.setattr(engine, "fetch_news", lambda asset, settings: [])
@@ -128,6 +151,70 @@ def test_run_console_analysis_appends_history(monkeypatch, tmp_path) -> None:
     assert len(lines) == 1
     record = json.loads(lines[0])
     assert record["symbol"] == "AAPL"
+
+
+def test_run_console_analysis_sends_telegram_notification_when_configured(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(engine, "fetch_history", _fake_fetch_history)
+    monkeypatch.setattr(engine, "fetch_news", lambda asset, settings: [])
+    monkeypatch.setattr(engine, "fetch_benchmarks", lambda *args, **kwargs: ({}, []))
+
+    calls: list[dict[str, object]] = []
+
+    def fake_send_notifications(report, targets, html_path=None, report_url=None):
+        calls.append({"report": report, "targets": targets, "html_path": html_path, "report_url": report_url})
+        return ["telegram:telegram sent"]
+
+    monkeypatch.setattr(notify, "send_notifications", fake_send_notifications)
+
+    options = options_from_payload(
+        {
+            "symbols": "AAPL",
+            "includeNews": False,
+            "buildDashboard": False,
+            "buildSite": False,
+            "telegramToken": "tg-token",
+            "telegramChatId": "tg-chat",
+        }
+    )
+
+    result = run_console_analysis(options, root=tmp_path)
+
+    assert len(calls) == 1
+    targets = calls[0]["targets"]
+    assert len(targets) == 1
+    assert targets[0].type == "telegram"
+    assert targets[0].enabled is True
+    assert targets[0].settings["token"] == "tg-token"
+    assert targets[0].settings["chat_id"] == "tg-chat"
+    assert result["notifications"] == ["telegram:telegram sent"]
+
+
+def test_run_console_analysis_skips_notifications_when_not_configured(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(engine, "fetch_history", _fake_fetch_history)
+    monkeypatch.setattr(engine, "fetch_news", lambda asset, settings: [])
+    monkeypatch.setattr(engine, "fetch_benchmarks", lambda *args, **kwargs: ({}, []))
+
+    calls: list[dict[str, object]] = []
+
+    def fake_send_notifications(report, targets, html_path=None, report_url=None):
+        calls.append({"targets": targets})
+        return ["should not be called"]
+
+    monkeypatch.setattr(notify, "send_notifications", fake_send_notifications)
+
+    options = options_from_payload(
+        {
+            "symbols": "AAPL",
+            "includeNews": False,
+            "buildDashboard": False,
+            "buildSite": False,
+        }
+    )
+
+    result = run_console_analysis(options, root=tmp_path)
+
+    assert calls == []
+    assert result["notifications"] == []
 
 
 def test_do_post_error_response_hides_exception_details(monkeypatch) -> None:
