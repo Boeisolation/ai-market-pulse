@@ -1,87 +1,85 @@
 <div align="center">
 
-![AI Market Pulse](docs/assets/banner.svg)
+![AI Market Pulse](docs/assets/banner-zh.svg)
 
-<!-- Replace <owner> below with your GitHub username/org once this is pushed — the CI badge goes live automatically. -->
-[![English](https://img.shields.io/badge/lang-English-14181A?style=flat-square)](README.md)
-[![简体中文](https://img.shields.io/badge/lang-简体中文-0F766E?style=flat-square)](README.zh-CN.md)
+<!-- 推到 GitHub 后把下面的 <owner> 换成你的用户名/组织名，CI 徽章会自动生效。 -->
+[![简体中文](https://img.shields.io/badge/简体中文-14181A?style=for-the-badge)](README.md)
+[![English](https://img.shields.io/badge/English-0F766E?style=for-the-badge)](README.en.md)
 
 [![CI](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/ai-market-pulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-b45309.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-4f46e5.svg)](pyproject.toml)
-[![Use: Research Automation Only](https://img.shields.io/badge/Use-Research%20Automation%20Only-b45309.svg)](#safety)
+[![仅用于研究自动化](https://img.shields.io/badge/用途-仅用于研究自动化-b45309.svg)](#风险提示)
 
 </div>
 
 ---
 
-### Contents
+### 目录
 
-[Why It Feels Different](#why-it-feels-different) · [See It In 60 Seconds](#see-it-in-60-seconds) · [Product Surfaces](#product-surfaces) · [Highlights](#highlights) · [Quick Start](#quick-start) · [Data Providers](#data-providers) · [AI Summaries](#enable-ai-summaries) · [Publishing](#publishing) · [Safety](#safety)
+[它不只是一个定时脚本](#它不只是一个定时脚本也不是只服务一类人) · [60 秒体验完整产品](#60-秒体验完整产品) · [产品界面](#产品界面) · [核心能力](#核心能力) · [快速开始](#快速开始) · [数据源](#数据源) · [启用 AI 总结](#启用-ai-总结) · [发布](#发布) · [风险提示](#风险提示)
 
 ---
 
-## Why It Feels Different
+## 它不只是一个定时脚本，也不是只服务一类人
 
-AI Market Pulse is not just a scheduled stock script, and it isn't only for one kind of user.
-
-| Quant researcher | Everyday stockholder |
+| 量化研究者 | 普通持仓者 |
 |---|---|
-| A lightweight quant research cockpit: watchlist screening, rule-based signal scoring, benchmark-relative strength, portfolio attribution, and risk findings — rendered into Markdown/HTML/JSON reports, a web dashboard, and a static research site you can publish. It supports signal review, portfolio risk checks, and pre-trade decision support, but it does not connect to brokers, place orders, or promise returns. Decision support, not an execution layer. | Open the local console, type in your tickers, click **Run** — no YAML, no config file, no code required. You get the exact same daily report, risk view, and dashboard the research workflow produces; you just don't need to understand the machinery under it to start using it. |
+| 一个轻量的量化研究驾驶舱——自选股筛选、规则驱动的信号评分、基准相对强弱、组合归因、风险发现，全部渲染成 Markdown/HTML/JSON 日报、Web Dashboard 和可发布的静态研究站点。支持交易信号复盘、组合风险检查、盘前/盘后研究这类量化工作流，但不连接券商、不自动下单、不承诺收益——它是决策辅助，不是下单通道。 | 打开本地控制台，输入代码，点一下运行——不用写 YAML，不用改配置文件，不用写代码。你拿到的是同一份日报、同一个风险视图、同一个 Dashboard，只是不需要先搞懂背后那套量化逻辑才能用起来。 |
 
-It is an original implementation inspired by the demand for daily AI stock analysis tools. It is not a fork or copy of another repository.
+本项目是原创实现，灵感来自"AI 股票每日分析工具"的真实需求，不是 fork，也不是复制其他仓库。
 
-![AI Market Pulse site preview](docs/assets/site-preview.png)
+![AI Market Pulse 站点预览](docs/assets/site-preview.png)
 
-| Dashboard | Daily report |
+| Dashboard | 每日研究报告 |
 |---|---|
-| ![Dashboard preview](docs/assets/dashboard-preview.png) | ![Report preview](docs/assets/report-preview.png) |
+| ![Dashboard 预览](docs/assets/dashboard-preview.png) | ![报告预览](docs/assets/report-preview.png) |
 
-## See It In 60 Seconds
+## 60 秒体验完整产品
 
-Run the complete offline demo. It uses deterministic sample data, so no market API, news API, or LLM key is required.
+运行离线 demo。它使用确定性的示例数据，不需要行情 API、新闻 API 或 LLM Key。
 
 ```bash
 pip install -e ".[dev]"
 market-pulse demo --output demo
 ```
 
-Then open:
+然后打开：
 
 - `demo/site/index.html`
 - `demo/reports/dashboard.html`
 - `demo/reports/market-pulse-20260708-0930.html`
 
-## Product Surfaces
+## 产品界面
 
-| Surface | What it shows | Output |
+| 界面 | 展示内容 | 输出 |
 |---|---|---|
-| Daily report | Market brief, AI portfolio brief, focus board, watchlist, asset cards, news | `reports/market-pulse-*.html` |
-| Web dashboard | Portfolio net value, score changes, risk board, contribution board | `reports/dashboard.html` |
-| Static site | Dashboard link, latest report, archive, and navigation | `site/index.html` |
-| JSONL history | Persistent local snapshots for trend rendering | `data/history.jsonl` |
+| 每日研究报告 | 市场简报、AI 组合简报、焦点看板、观察列表、单股卡片、新闻 | `reports/market-pulse-*.html` |
+| Web Dashboard | 组合净值、评分变化、风险榜、收益贡献榜 | `reports/dashboard.html` |
+| 静态研究站点 | Dashboard 入口、最新报告、历史归档、导航入口 | `site/index.html` |
+| JSONL 历史 | 用于趋势渲染的本地持久化快照 | `data/history.jsonl` |
 
-## Highlights
+## 核心能力
 
-- EN / 中文 toggle in generated HTML pages.
-- Watchlist-driven analysis for stocks, ETFs, crypto, and Yahoo Finance compatible symbols.
-- Local visual console with symbol input, report generation, dashboard refresh, and static-site links.
-- One-command custom ticker analysis with `market-pulse run --symbols`.
-- Quant research workflow for screening, signal review, benchmark comparison, portfolio attribution, and risk control.
-- Technical snapshot: moving averages, RSI, MACD, Bollinger position, ATR, drawdown, volume ratio, 5/20/60-day returns.
-- Rules-first signal score from 0 to 100 with readable reasons and risk labels.
-- Portfolio mode with quantity, cost basis, allocation, day P/L, and unrealized P/L.
-- Focus Board for attention items, risk findings, contribution ranking, and daily checklist.
-- Interactive dashboard exploration: symbol search, risk filter, relative-strength filter, history window, and symbol drilldown.
-- Benchmark context for SPY, QQQ, CSI 300, Hang Seng Index, and configurable market baselines.
-- Relative strength per symbol: 20/60-day performance versus its assigned benchmark.
-- Data freshness checks: latest trading day, source, row count, and stale/missing data warnings.
-- Multi-provider data foundation: yfinance by default, optional AkShare, Baostock, and Tushare for mainland A-shares.
-- Optional OpenAI-compatible asset and portfolio summaries with prompt templates and local cache.
-- Push notifications through Telegram, Slack, Discord, Feishu, WeCom, generic webhooks, or email.
-- GitHub Actions and GitHub Pages workflows for zero-server daily publishing.
+- 支持股票、ETF、加密资产，以及 Yahoo Finance 兼容代码。
+- 本地可视化控制台：输入股票代码、生成报告、刷新 Dashboard、打开静态站点。
+- 支持 `market-pulse run --symbols` 一条命令查询自定义股票池。
+- 量化交易研究流程：股票池筛选、信号复盘、基准对比、组合归因、风险控制。
+- 规则优先的 0-100 信号评分，带风险标签和可读原因。
+- 技术指标：均线、RSI、MACD、布林位置、ATR、回撤、量比、5/20/60 日收益。
+- 组合模式：数量、成本、市值、仓位占比、当日盈亏、浮动盈亏。
+- 基准对比：SPY、QQQ、沪深300、恒生指数，以及可配置的市场基准。
+- 单股相对强弱：展示 20/60 日收益相对基准的跑赢或跑输。
+- Focus Board：重点关注、风险发现、贡献排序、每日检查清单。
+- 交互式 Dashboard：代码搜索、风险筛选、相对强弱筛选、历史窗口、单股详情钻取。
+- 数据新鲜度：最新交易日、数据源、历史行数、滞后或缺失风险提示。
+- 多数据源：默认 yfinance，可选 AkShare、Baostock、Tushare 增强 A 股覆盖。
+- 可选 OpenAI 兼容模型：单股总结、组合总结、prompt 模板、本地缓存。
+- 推送通知：Telegram、Slack、Discord、飞书、企业微信、通用 webhook、邮件。
+- GitHub Actions 与 GitHub Pages：无需服务器也能每日发布。
+- 生成的 HTML 页面支持 EN / 中文切换。
 
-## Quick Start
+## 快速开始
 
 ```bash
 git clone <your-repo-url>
@@ -92,17 +90,17 @@ pip install -e ".[dev]"
 market-pulse serve
 ```
 
-Open `http://127.0.0.1:8766`, enter the symbols you want, and click **Run Analysis**.
+打开 `http://127.0.0.1:8766`，输入你想看的股票代码，点击 **开始分析**。
 
-Prefer terminal usage?
+如果偏好命令行，也可以直接运行：
 
 ```bash
 market-pulse run --symbols "AAPL,MSFT,NVDA,TSLA,600519" --output reports --no-notify
 ```
 
-Open the generated HTML file in `reports/`. Replace the symbols with any Yahoo Finance compatible ticker, crypto pair, HK ticker, or mainland A-share code. Plain 6-digit A-share codes are normalized automatically, for example `600519` becomes `600519.SS`.
+打开 `reports/` 里的 HTML 文件即可查看报告。把示例代码换成你自己的股票池即可，支持 Yahoo Finance 兼容代码、加密资产、港股代码和 A 股代码。纯 6 位 A 股代码会自动补后缀，例如 `600519` 会变成 `600519.SS`。
 
-To build the full dashboard and static site for your own watchlist:
+为自己的股票池生成完整 Dashboard 和静态站点：
 
 ```bash
 market-pulse run --symbols "AAPL,MSFT,NVDA,TSLA,600519" --output reports --history data/history.jsonl --no-notify
@@ -110,16 +108,16 @@ market-pulse dashboard --history data/history.jsonl --output reports/dashboard.h
 market-pulse site --reports reports --output site --title "My Market Pulse"
 ```
 
-To save a reusable watchlist file:
+如果想保存一个可复用股票池文件：
 
 ```bash
 market-pulse init --symbols "AAPL,MSFT,NVDA,TSLA,600519" --path watchlist.yaml
 market-pulse run --config watchlist.yaml --output reports --history data/history.jsonl --no-notify
 ```
 
-## Starter Templates
+## 配置模板
 
-Prefer a prebuilt starting point? Use a template instead of `--symbols`.
+如果想从预设行业/市场模板开始，也可以不用 `--symbols`。
 
 ```bash
 market-pulse init --list-templates
@@ -128,17 +126,21 @@ market-pulse init --template cn-stock --path watchlist.yaml
 market-pulse init --template crypto --path watchlist.yaml
 ```
 
-## Portfolio Import
+## 导入持仓
 
 ```bash
 market-pulse import-portfolio --input examples/portfolio.csv --output watchlist.yaml --template default --force
 ```
 
-Supported formats: `.csv`, `.tsv`, `.xlsx` with `pip install -e ".[excel]"`.
+支持 `.csv`、`.tsv`、`.xlsx`。XLSX 需要安装：
 
-Recognized columns include `symbol`, `ticker`, `code`, `name`, `market`, `currency`, `quantity`, `qty`, `shares`, `cost_basis`, `avg_cost`, `tags`, and `note`. Chinese headers such as `股票代码`, `股票名称`, `持仓`, `成本价`, `标签`, and `备注` are also accepted.
+```bash
+pip install -e ".[excel]"
+```
 
-## Dashboard And Site
+可识别字段包括 `symbol`、`ticker`、`code`、`name`、`market`、`currency`、`quantity`、`qty`、`shares`、`cost_basis`、`avg_cost`、`tags`、`note`，也支持 `股票代码`、`股票名称`、`持仓`、`成本价`、`标签`、`备注`。
+
+## Dashboard 与静态站点
 
 ```bash
 market-pulse run --config watchlist.yaml --output reports --history data/history.jsonl --no-notify
@@ -146,16 +148,16 @@ market-pulse dashboard --history data/history.jsonl --output reports/dashboard.h
 market-pulse site --reports reports --output site --title "AI Market Pulse"
 ```
 
-Open `site/index.html`. The generated report, dashboard, and site include an EN / 中文 switch.
+打开 `site/index.html`。生成的日报、Dashboard 和站点首页都支持 EN / 中文切换。
 
-## Data Providers
+## 数据源
 
 ```yaml
 data:
   providers: ["akshare", "yfinance"]
 ```
 
-## Benchmarks And Freshness
+## 基准与数据新鲜度
 
 ```yaml
 benchmarks:
@@ -171,9 +173,9 @@ benchmarks:
   stale_after_days: 4
 ```
 
-Reports show benchmark context, per-symbol relative strength, latest trading day, data source, and stale/missing data warnings.
+报告会展示基准概览、单股相对强弱、最新交易日、数据源，以及数据滞后或缺失风险。
 
-Optional mainland China providers:
+可选 A 股增强数据源：
 
 ```bash
 pip install -e ".[cn]"
@@ -181,9 +183,9 @@ pip install -e ".[tushare]"
 export TUSHARE_TOKEN="..."
 ```
 
-Providers are tried in order; if one is missing or cannot serve a symbol, the app falls back to the next provider.
+数据源按顺序尝试；某个数据源缺失或不支持该标的时，会自动尝试下一个。
 
-## Enable AI Summaries
+## 启用 AI 总结
 
 ```yaml
 llm:
@@ -203,7 +205,7 @@ export OPENAI_MODEL="your-model-name"
 market-pulse run --config watchlist.yaml --output reports
 ```
 
-Useful switches:
+常用开关：
 
 ```bash
 market-pulse run --config watchlist.yaml --output reports --no-ai
@@ -217,23 +219,23 @@ market-pulse doctor --config watchlist.yaml
 docker compose up --build
 ```
 
-This generates `reports/`, `data/history.jsonl`, and `site/`.
+这会生成 `reports/`、`data/history.jsonl` 和 `site/`。
 
-## Publishing
+## 发布
 
-This repository includes:
+项目内置：
 
 - `.github/workflows/ci.yml`
 - `.github/workflows/daily-report.yml`
 - `.github/workflows/pages.yml`
 - [docs/PUBLISHING.md](docs/PUBLISHING.md)
 
-After pushing to GitHub, add optional secrets such as `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `TUSHARE_TOKEN`.
+推到 GitHub 后，可以配置 `OPENAI_API_KEY`、`OPENAI_MODEL`、`OPENAI_BASE_URL`、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`、`TUSHARE_TOKEN` 等 secrets。
 
-## Roadmap
+## 路线图
 
-See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md).
+查看 [CHANGELOG.md](CHANGELOG.md) 和 [ROADMAP.md](ROADMAP.md)。
 
-## Safety
+## 风险提示
 
-This software is for research automation only, whether you're using it as a quant screening tool or a daily watchlist report. It does not provide financial advice, does not guarantee returns, does not connect to brokers, and does not place trades. Always verify market data, news, model outputs, and corporate actions before making decisions.
+不管你是把它当量化筛选工具用，还是当每日自选股报告用，本软件都仅用于研究自动化：不提供投资建议，不承诺收益，不连接券商，也不会自动交易或下单。做任何决策前，请自行核验行情、新闻、模型输出、公司行动和风险。

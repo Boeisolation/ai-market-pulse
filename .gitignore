@@ -18,6 +18,7 @@ demo/
 .coverage
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/launch.json
 
 # Internal handoff notes — not for public release (contains another
 # collaborator's local machine path and pre-release task checklists).
