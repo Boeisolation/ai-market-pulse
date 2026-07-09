@@ -1,0 +1,5 @@
+symbol,name,market,currency,quantity,cost_basis,tags,note
+AAPL,Apple,US,USD,10,185,"mega-cap,consumer-tech","example US holding"
+NVDA,NVIDIA,US,USD,6,140,"ai,semiconductor","example US holding"
+600519,Kweichow Moutai,CN,CNY,1,1500,"a-share,consumer","example China holding"
+SPY,S&P 500 ETF,US,USD,,,"index","watchlist only"

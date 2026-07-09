@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+import sys
+import types
+
+import pandas as pd
+
+from ai_market_pulse.market_data import _a_share_code, _fetch_yfinance, _normalize_history, _snapshot
+from ai_market_pulse.models import Asset
+
+
+def test_a_share_code_detects_common_symbols() -> None:
+    assert _a_share_code(Asset(symbol="600519.SS")) == "600519"
+    assert _a_share_code(Asset(symbol="000001.SZ")) == "000001"
+    assert _a_share_code(Asset(symbol="300750", market="CN")) == "300750"
+    assert _a_share_code(Asset(symbol="AAPL", market="US")) is None
+
+
+def test_normalize_history_accepts_ohlc_and_builds_snapshot() -> None:
+    raw = pd.DataFrame(
+        [
+            {"Date": "2026-01-02", "Open": "10", "High": "12", "Low": "9", "Close": "11", "Volume": "100"},
+            {"Date": "2026-01-03", "Open": "11", "High": "13", "Low": "10", "Close": "12", "Volume": "120"},
+        ]
+    )
+
+    history = _normalize_history(raw, "TEST")
+    snapshot = _snapshot("TEST", "Test Asset", "USD", history, source="unit")
+
+    assert list(history.columns) == ["Date", "Open", "High", "Low", "Close", "Volume"]
+    assert snapshot.last_close == 12
+    assert snapshot.change_pct == 0.090909
+    assert snapshot.source == "unit"
+
+
+def test_fetch_yfinance_widens_calendar_window_and_tails(monkeypatch) -> None:
+    calls: dict[str, str] = {}
+
+    class FakeTicker:
+        def __init__(self, symbol: str) -> None:
+            self.symbol = symbol
+
+        def history(self, period: str, auto_adjust: bool) -> pd.DataFrame:
+            calls["period"] = period
+            rows = 300
+            index = pd.date_range("2024-01-01", periods=rows, freq="B")
+            index.name = "Date"
+            close = [float(i + 1) for i in range(rows)]
+            return pd.DataFrame(
+                {"Open": close, "High": close, "Low": close, "Close": close, "Volume": [100] * rows},
+                index=index,
+            )
+
+        @property
+        def fast_info(self) -> dict:
+            return {}
+
+        @property
+        def info(self) -> dict:
+            return {"shortName": "Fake Co", "currency": "USD"}
+
+    fake_module = types.ModuleType("yfinance")
+    fake_module.Ticker = FakeTicker  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "yfinance", fake_module)
+
+    asset, snapshot, history = _fetch_yfinance(Asset(symbol="AAA"), 220)
+
+    # yfinance period must be widened well beyond the 220 trading-day target.
+    assert int(calls["period"].rstrip("d")) > 300
+    # history is trimmed back to the trading-day target, which is enough for SMA200.
+    assert len(history) == 220
+    assert snapshot.source == "yfinance"
+    assert asset.currency == "USD"

@@ -1,0 +1,44 @@
+name: Daily Market Pulse
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 12 * * 1-5"
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Generate report
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+          # Optional: set a repository variable to a public URL (e.g. your GitHub Pages
+          # site) so pushed notifications link to the report instead of a local path.
+          MARKET_PULSE_REPORT_URL: ${{ vars.MARKET_PULSE_REPORT_URL }}
+        run: market-pulse run --config examples/watchlist.yaml --output reports
+      - name: Generate dashboard
+        run: market-pulse dashboard --history data/history.jsonl --output reports/dashboard.html
+      - name: Build static site
+        run: market-pulse site --reports reports --output site --title "AI Market Pulse"
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-pulse-reports
+          path: |
+            reports/
+            data/
+            site/

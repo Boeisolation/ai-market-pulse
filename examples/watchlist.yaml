@@ -1,0 +1,89 @@
+title: "AI Market Pulse Daily Brief"
+timezone: "America/Los_Angeles"
+
+analysis:
+  language: "zh-CN"
+  lookback_days: 220
+  min_history_rows: 45
+
+data:
+  # AkShare is optional. Install with: pip install -e ".[cn]"
+  # If AkShare is unavailable or does not support a symbol, yfinance is used as fallback.
+  providers: ["akshare", "yfinance"]
+
+benchmarks:
+  enabled: true
+  # These are rendered in Benchmark Context.
+  symbols: ["SPY", "QQQ", "000300.SS", "^HSI"]
+  # Market-level defaults for relative strength.
+  default_by_market:
+    US: "SPY"
+    CN: "000300.SS"
+    HK: "^HSI"
+    CRYPTO: "BTC-USD"
+  # Optional per-symbol overrides. Tech names often make more sense versus QQQ.
+  compare:
+    AAPL: "QQQ"
+    NVDA: "QQQ"
+    MSFT: "QQQ"
+  stale_after_days: 4
+
+news:
+  enabled: true
+  items_per_asset: 4
+  language: "zh-CN"
+  region: "CN"
+  lookback_days: 2
+
+llm:
+  enabled: false
+  base_url: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+  api_key_env: "OPENAI_API_KEY"
+  model: "${OPENAI_MODEL:-}"
+  temperature: 0.2
+  cache_enabled: true
+  cache_dir: "data/ai-cache"
+  prompts_dir:
+
+assets:
+  - symbol: "AAPL"
+    name: "Apple"
+    market: "US"
+    quantity: 10
+    cost_basis: 185
+    tags: ["mega-cap", "consumer-tech"]
+  - symbol: "NVDA"
+    name: "NVIDIA"
+    market: "US"
+    quantity: 6
+    cost_basis: 140
+    tags: ["ai", "semiconductor"]
+  - symbol: "MSFT"
+    name: "Microsoft"
+    market: "US"
+    tags: ["cloud", "ai"]
+  - symbol: "SPY"
+    name: "S&P 500 ETF"
+    market: "US"
+    tags: ["index"]
+  - symbol: "600519.SS"
+    name: "Kweichow Moutai"
+    market: "CN"
+    quantity: 1
+    cost_basis: 1500
+    tags: ["a-share", "consumer"]
+
+notifications:
+  - type: "telegram"
+    name: "telegram"
+    enabled: false
+    token_env: "TELEGRAM_BOT_TOKEN"
+    chat_id_env: "TELEGRAM_CHAT_ID"
+  - type: "feishu"
+    name: "feishu"
+    enabled: false
+    url_env: "FEISHU_WEBHOOK_URL"
+  - type: "wecom"
+    name: "wecom"
+    enabled: false
+    url_env: "WECOM_WEBHOOK_URL"

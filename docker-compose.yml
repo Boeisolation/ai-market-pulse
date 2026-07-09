@@ -1,0 +1,17 @@
+services:
+  market-pulse:
+    build: .
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
+    volumes:
+      - ./examples:/app/examples:ro
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./site:/app/site
+    command: >
+      sh -c "market-pulse run --config examples/watchlist.yaml --output reports --history data/history.jsonl --no-notify &&
+             market-pulse dashboard --history data/history.jsonl --output reports/dashboard.html &&
+             market-pulse site --reports reports --output site --title 'AI Market Pulse'"

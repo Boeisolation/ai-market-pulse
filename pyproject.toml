@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-market-pulse"
+version = "0.1.0"
+description = "AI-assisted quant trading research reports with watchlist screening, risk signals, dashboards, and publishing."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  { name = "AI Market Pulse Contributors" }
+]
+keywords = ["stocks", "market", "quant", "trading", "ai", "llm", "yfinance", "notifications"]
+dependencies = [
+  "pandas>=2.0.0",
+  "PyYAML>=6.0.0",
+  "yfinance>=0.2.40"
+]
+
+[project.optional-dependencies]
+cn = [
+  "akshare>=1.14.0",
+  "baostock>=0.8.9"
+]
+excel = [
+  "openpyxl>=3.1.0"
+]
+tushare = [
+  "tushare>=1.4.0"
+]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.6.0"
+]
+
+[project.scripts]
+market-pulse = "ai_market_pulse.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_market_pulse"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
