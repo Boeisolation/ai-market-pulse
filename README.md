@@ -2,7 +2,7 @@
 
 # AI Market Pulse
 
-**An AI + quant trading research cockpit for watchlist screening, portfolio risk, automated reports, and static publishing.**
+**Turn any watchlist into a daily AI market research report — a quant-grade research cockpit if you want to dig in, a zero-code daily report generator if you don't.**
 
 [中文](README.zh-CN.md) · English
 
@@ -16,9 +16,11 @@
 
 ## Why It Feels Different
 
-AI Market Pulse is not just a scheduled stock script. It turns daily market data into a quant-oriented research product: technical factors, rule-based signals, benchmark-relative strength, portfolio attribution, risk findings, Markdown/HTML/JSON reports, a web dashboard, a static research site, and optional OpenAI-compatible summaries.
+AI Market Pulse is not just a scheduled stock script, and it isn't only for one kind of user.
 
-The project is designed for quant trading research workflows such as watchlist screening, signal review, portfolio risk checks, and pre-trade decision support. It does not connect to brokers, place orders, or promise returns.
+**If you think in signals and benchmarks**, it's a lightweight quant research cockpit: watchlist screening, rule-based signal scoring, benchmark-relative strength, portfolio attribution, and risk findings, all rendered into Markdown/HTML/JSON reports, a web dashboard, and a static research site you can publish. It supports quant-style research workflows — signal review, portfolio risk checks, pre-trade decision support — but it does not connect to brokers, place orders, or promise returns. It's decision support, not an execution layer.
+
+**If you just want to check on the stocks you follow**, open the local console, type in your tickers, and click Run — no YAML, no config file, no code required. You get the same daily report, risk view, and dashboard the research workflow above produces; you just don't need to understand any of the machinery under it to start using it.
 
 It is an original implementation inspired by the demand for daily AI stock analysis tools. It is not a fork or copy of another repository.
 
@@ -227,4 +229,4 @@ See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md).
 
 ## Safety
 
-This software is for quant trading research automation only. It does not provide financial advice, does not guarantee returns, does not connect to brokers, and does not place trades. Always verify market data, news, model outputs, and corporate actions before making decisions.
+This software is for research automation only, whether you're using it as a quant screening tool or a daily watchlist report. It does not provide financial advice, does not guarantee returns, does not connect to brokers, and does not place trades. Always verify market data, news, model outputs, and corporate actions before making decisions.
