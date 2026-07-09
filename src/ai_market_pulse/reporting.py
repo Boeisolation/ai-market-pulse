@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from pathlib import Path
 
 from .models import AssetAnalysis, BenchmarkSnapshot, DailyReport, DataFreshness, HistoryPoint, PortfolioSummary
@@ -207,7 +208,7 @@ def _insights_markdown(report: DailyReport) -> list[str]:
         lines.extend(["### Needs Attention", "", "| Symbol | Priority | Risk | Reason | Day P/L | Unrealized |", "|---|---:|---|---|---:|---:|"])
         for item in insights.attention:
             lines.append(
-                f"| {item.symbol} | {item.priority} | {item.risk_level} | {item.reason} | {_signed_money(item.day_pnl)} | {_signed_money(item.unrealized_pnl)} |"
+                f"| {item.symbol} | {item.priority} | {item.risk_level} | {_md_escape(item.reason)} | {_signed_money(item.day_pnl)} | {_signed_money(item.unrealized_pnl)} |"
             )
     else:
         lines.extend(["No rule-based attention items.", ""])
@@ -221,12 +222,12 @@ def _insights_markdown(report: DailyReport) -> list[str]:
         lines.extend(["", "### Risk Findings", ""])
         for finding in insights.risk_findings[:12]:
             value = f" ({_num(finding.value)})" if finding.value is not None else ""
-            lines.append(f"- [{finding.severity}] {finding.symbol}: {finding.message}{value}")
+            lines.append(f"- [{finding.severity}] {finding.symbol}: {_md_escape(finding.message)}{value}")
     if insights.checklist:
         lines.extend(["", "### Checklist", ""])
         for item in insights.checklist:
             prefix = f"{item.symbol}: " if item.symbol else ""
-            lines.append(f"- [{item.priority}] {prefix}{item.text}")
+            lines.append(f"- [{item.priority}] {prefix}{_md_escape(item.text)}")
     return lines
 
 
@@ -267,7 +268,7 @@ def _asset_markdown(item: AssetAnalysis, history: list[HistoryPoint]) -> list[st
         lines.extend(["", "### News", ""])
         for news in item.news:
             label = f"{news.title} - {news.source}" if news.source else news.title
-            lines.append(f"- [{label}]({news.link})")
+            lines.append(f"- [{label}]({_safe_href(news.link)})")
     return lines
 
 
@@ -390,7 +391,7 @@ def _html_card(item: AssetAnalysis, history: list[HistoryPoint]) -> str:
     reasons = "".join(f"<li>{html.escape(reason)}</li>" for reason in item.signal.reasons)
     warnings = "".join(f"<li>{html.escape(warning)}</li>" for warning in item.warnings)
     news = "".join(
-        f'<li><a href="{html.escape(news_item.link)}">{html.escape(news_item.title)}</a></li>'
+        f'<li><a href="{html.escape(_safe_href(news_item.link))}">{html.escape(news_item.title)}</a></li>'
         for news_item in item.news[:4]
     )
     ai = f"<p>{html.escape(item.ai_summary)}</p>" if item.ai_summary else ""
@@ -596,3 +597,24 @@ def _trend_text(values: list[int]) -> str:
     if not values:
         return "n/a"
     return " -> ".join(str(value) for value in values[-6:])
+
+
+def _safe_href(url: str | None) -> str:
+    if url is None:
+        return "#"
+    if not re.match(r"^https?://", url, re.IGNORECASE):
+        return "#"
+    # A ")" , whitespace, or control character in the destination could close
+    # the Markdown "(...)" link syntax early and let the rest of the string
+    # inject a second, unescaped link (e.g. one using a javascript: URI).
+    if re.search(r"[)\s\x00-\x1f]", url):
+        return "#"
+    return url
+
+
+def _md_escape(text: object) -> str:
+    if text is None:
+        return ""
+    # Table rows must stay on one physical line, so a literal newline is just as
+    # corrupting to the row as an unescaped pipe would be.
+    return str(text).replace("|", "\\|").replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
