@@ -146,16 +146,16 @@ def render_dashboard(data: DashboardData) -> str:
   <p class="section-note">{lang("Filter by symbol, risk, relative strength, and history window. Click any card or table row for a focused drilldown.", "按代码、风险、相对强弱和历史窗口过滤。点击任意卡片或表格行查看单股详情。")}</p>
   {_controls_html()}
   {_detail_html()}
-  <h2>{lang("Portfolio Net Value", "组合净值")}</h2>
-  <p class="section-note">{lang("Grouped by currency so mixed portfolios remain readable without hiding currency risk.", "按币种分组展示，让多币种组合在可读的同时保留汇率风险提示。")}</p>
-  <section class="wide-grid">
-    {portfolio_cards or f'<div class="panel muted">{lang("No portfolio market value history yet. Add quantity and cost_basis to assets, then run the report.", "暂无组合市值历史。给资产加入 quantity 和 cost_basis 后重新运行报告即可。")}</div>'}
-  </section>
   <h2>{lang("Score Changes", "评分变化")}</h2>
   <p class="section-note">{lang("A compact view of signal momentum for each tracked symbol.", "快速观察每个标的的信号动量变化。")}</p>
   <div class="tool-row"><span class="muted" data-filter-count></span><button class="ghost-button" type="button" data-reset-filters>{lang("Reset filters", "重置筛选")}</button></div>
   <section class="grid" data-symbol-cards>
     {score_cards or f'<div class="panel muted">{lang("No score history yet.", "暂无评分历史。")}</div>'}
+  </section>
+  <h2>{lang("Portfolio Net Value", "组合净值")}</h2>
+  <p class="section-note">{lang("Grouped by currency so mixed portfolios remain readable without hiding currency risk.", "按币种分组展示，让多币种组合在可读的同时保留汇率风险提示。")}</p>
+  <section class="wide-grid">
+    {portfolio_cards or f'<div class="panel muted">{lang("No portfolio market value history yet. Add quantity and cost_basis to assets, then run the report.", "暂无组合市值历史。给资产加入 quantity 和 cost_basis 后重新运行报告即可。")}</div>'}
   </section>
   <h2>{lang("Risk Board", "风险榜")}</h2>
   <table class="dashboard-table" data-latest-table>

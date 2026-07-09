@@ -48,6 +48,21 @@ def test_render_dashboard_contains_main_sections() -> None:
     assert html.count("<tr data-symbol-row") == 3
 
 
+def test_render_dashboard_places_score_changes_before_portfolio_net_value() -> None:
+    data = build_dashboard_data(
+        [
+            _point("2026-07-06", "AAA", 50, "low", "USD", market_value=1000, day_pnl=10),
+            _point("2026-07-07", "AAA", 60, "medium", "USD", market_value=1100, day_pnl=25),
+        ]
+    )
+
+    rendered = render_dashboard(data)
+
+    score_changes_index = rendered.index("Score Changes")
+    portfolio_net_value_index = rendered.index("Portfolio Net Value")
+    assert score_changes_index < portfolio_net_value_index
+
+
 def _point(
     date: str,
     symbol: str,
