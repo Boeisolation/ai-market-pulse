@@ -10,7 +10,9 @@ def enrich_portfolio(analyses: list[AssetAnalysis]) -> tuple[list[AssetAnalysis]
     totals_by_currency: dict[str, float] = {}
     for position in positions:
         if position:
-            totals_by_currency[position.currency] = totals_by_currency.get(position.currency, 0) + position.market_value
+            totals_by_currency[position.currency] = totals_by_currency.get(position.currency, 0) + abs(
+                position.market_value
+            )
 
     enriched: list[AssetAnalysis] = []
     for analysis, position in zip(analyses, positions):
