@@ -44,27 +44,27 @@ def _send_target(
     kind = target.type.lower()
     settings = target.settings
     if kind == "telegram":
-        token = _setting(settings, "token", "token_env")
-        chat_id = _setting(settings, "chat_id", "chat_id_env")
+        token = resolve_setting(settings, "token", "token_env")
+        chat_id = resolve_setting(settings, "chat_id", "chat_id_env")
         if not token or not chat_id:
             raise ValueError("telegram requires token/token_env and chat_id/chat_id_env")
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         _post_json(url, {"chat_id": chat_id, "text": message[:3900], "disable_web_page_preview": True})
     elif kind in {"webhook", "slack", "discord"}:
-        url = _setting(settings, "url", "url_env")
+        url = resolve_setting(settings, "url", "url_env")
         if not url:
             raise ValueError(f"{kind} requires url/url_env")
         _assert_safe_url(url)
         payload = {"content": message[:1900]} if kind == "discord" else {"text": message[:3900]}
         _post_json(url, payload)
     elif kind == "feishu":
-        url = _setting(settings, "url", "url_env")
+        url = resolve_setting(settings, "url", "url_env")
         if not url:
             raise ValueError("feishu requires url/url_env")
         _assert_safe_url(url)
         _post_json(url, {"msg_type": "text", "content": {"text": message[:3900]}})
     elif kind == "wecom":
-        url = _setting(settings, "url", "url_env")
+        url = resolve_setting(settings, "url", "url_env")
         if not url:
             raise ValueError("wecom requires url/url_env")
         _assert_safe_url(url)
@@ -162,12 +162,12 @@ def _post_json(url: str, payload: dict) -> None:
 
 
 def _send_email(settings: dict, markdown: str, html_path: Path | None) -> None:
-    host = _setting(settings, "smtp_host", "smtp_host_env")
-    port = int(_setting(settings, "smtp_port", "smtp_port_env") or "465")
-    username = _setting(settings, "username", "username_env")
-    password = _setting(settings, "password", "password_env")
-    sender = _setting(settings, "sender", "sender_env") or username
-    recipients = _setting(settings, "to", "to_env")
+    host = resolve_setting(settings, "smtp_host", "smtp_host_env")
+    port = int(resolve_setting(settings, "smtp_port", "smtp_port_env") or "465")
+    username = resolve_setting(settings, "username", "username_env")
+    password = resolve_setting(settings, "password", "password_env")
+    sender = resolve_setting(settings, "sender", "sender_env") or username
+    recipients = resolve_setting(settings, "to", "to_env")
     if not host or not sender or not recipients:
         raise ValueError("email requires smtp_host, sender, and to")
 
@@ -190,7 +190,7 @@ def _send_email(settings: dict, markdown: str, html_path: Path | None) -> None:
         server.send_message(message)
 
 
-def _setting(settings: dict, literal_key: str, env_key: str) -> str | None:
+def resolve_setting(settings: dict, literal_key: str, env_key: str) -> str | None:
     literal = settings.get(literal_key)
     if literal:
         return str(literal)

@@ -340,6 +340,6 @@ def test_send_target_email_requires_host_sender_and_recipients() -> None:
 def test_setting_resolves_via_env_indirection(monkeypatch) -> None:
     monkeypatch.setenv("AI_MARKET_PULSE_TEST_WEBHOOK_TOKEN", "from-env")
 
-    value = notify._setting({"token_env": "AI_MARKET_PULSE_TEST_WEBHOOK_TOKEN"}, "token", "token_env")
+    value = notify.resolve_setting({"token_env": "AI_MARKET_PULSE_TEST_WEBHOOK_TOKEN"}, "token", "token_env")
 
     assert value == "from-env"
