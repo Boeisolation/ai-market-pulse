@@ -31,3 +31,5 @@ def test_render_site_index_handles_empty_reports() -> None:
     assert "Dashboard" in html
     assert "data-lang-choice" in html
     assert "量化研究站点" in html
+    assert "data-theme-choice" in html
+    assert "No server" in html

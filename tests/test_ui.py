@@ -68,6 +68,7 @@ def test_language_boot_script_sets_document_lang_dataset_wiring() -> None:
     assert "document.documentElement.dataset.lang = lang;" in script
     assert 'document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";' in script
     assert '<script>' in script and '</script>' in script
+    assert 'dataset.theme = localStorage.getItem("amp-theme") || "dark";' in script
 
 
 def test_language_toggle_contains_both_language_buttons() -> None:
@@ -76,6 +77,8 @@ def test_language_toggle_contains_both_language_buttons() -> None:
     assert 'data-lang-choice="en"' in html
     assert 'data-lang-choice="zh"' in html
     assert 'class="language-switch"' in html
+    assert 'data-theme-choice="dark"' in html
+    assert 'data-theme-choice="light"' in html
 
 
 def test_language_runtime_script_wires_click_handlers_and_storage() -> None:
@@ -84,6 +87,7 @@ def test_language_runtime_script_wires_click_handlers_and_storage() -> None:
     assert "localStorage.setItem(\"amp-lang\", lang);" in script
     assert "addEventListener(\"click\"" in script
     assert "querySelectorAll(\"[data-lang-choice]\")" in script
+    assert 'localStorage.setItem("amp-theme", theme);' in script
 
 
 def test_ui_styles_returns_non_empty_css_with_expected_selectors() -> None:
@@ -93,3 +97,5 @@ def test_ui_styles_returns_non_empty_css_with_expected_selectors() -> None:
     assert "--brand:" in css
     assert 'html[data-lang="en"] [data-i18n-zh]' in css
     assert 'html[data-lang="zh"] [data-i18n-en]' in css
+    assert 'html[data-theme="light"]' in css
+    assert "--grid-line:" in css

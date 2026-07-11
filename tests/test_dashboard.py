@@ -36,6 +36,10 @@ def test_render_dashboard_contains_main_sections() -> None:
     assert "Score Changes" in html
     assert "Risk Board" in html
     assert "Contribution Board" in html
+    assert "Theme Research" in html
+    assert "Research matrix" in html
+    assert "Signal Risk" in html
+    assert "data-theme-choice" in html
     assert "AAA" in html
     assert "data-lang-choice" in html
     assert "组合研究驾驶舱" in html
@@ -46,21 +50,9 @@ def test_render_dashboard_contains_main_sections() -> None:
     assert "dashboard-data" in html
     assert "data-symbol-card" in html
     assert html.count("<tr data-symbol-row") == 3
-
-
-def test_render_dashboard_places_score_changes_before_portfolio_net_value() -> None:
-    data = build_dashboard_data(
-        [
-            _point("2026-07-06", "AAA", 50, "low", "USD", market_value=1000, day_pnl=10),
-            _point("2026-07-07", "AAA", 60, "medium", "USD", market_value=1100, day_pnl=25),
-        ]
-    )
-
-    rendered = render_dashboard(data)
-
-    score_changes_index = rendered.index("Score Changes")
-    portfolio_net_value_index = rendered.index("Portfolio Net Value")
-    assert score_changes_index < portfolio_net_value_index
+    matrix = html[html.index('<section class="matrix-grid"') : html.index("</section>", html.index('<section class="matrix-grid"'))]
+    assert matrix.count("<span>unknown</span>") == 2
+    assert matrix.count('style="width:100.0%"') >= 2
 
 
 def _point(

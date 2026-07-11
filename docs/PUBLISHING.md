@@ -24,18 +24,12 @@ Open `site/index.html`.
 
 The workflow generates reports, dashboard, and the static site before deploying.
 
-### History Persistence Across Scheduled Runs
+## Optional Intraday Alerts
 
-Both `daily-report.yml` and `pages.yml` restore `data/history.jsonl` from an
-`actions/cache` entry before generating a report, using a shared
-`market-pulse-history-v1-` key prefix so the two workflows accumulate the
-same history across runs (a fresh cache key is saved automatically at the
-end of each job). Without this, every scheduled run would start from an
-empty history file and the dashboard's trend/relative-strength views would
-never accumulate more than a single day of data. GitHub Actions caches can
-be evicted (inactivity or the repository-wide size limit), so treat this as
-best-effort persistence, not a durable database — do not rely on it for
-data you cannot afford to lose.
+The `intraday-alert.yml` workflow is disabled by default. Set `alerts.enabled: true` in
+`watchlist.yaml`, configure at least one notification target, and add the repository
+variable `ENABLE_INTRADAY_ALERTS=true`. The workflow restores the latest alert snapshot,
+so unchanged threshold events are not sent repeatedly.
 
 ## Suggested Repository Metadata
 

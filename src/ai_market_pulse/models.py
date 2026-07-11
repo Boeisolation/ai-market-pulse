@@ -113,6 +113,23 @@ class PortfolioSummary:
 
 
 @dataclass(frozen=True)
+class ThemeSummary:
+    tag: str
+    symbols: list[str]
+    average_score: float
+    weighted_score: float | None
+    return_20d: float | None
+    return_60d: float | None
+    relative_return_20d: float | None
+    relative_return_60d: float | None
+    high_risk_count: int
+    positioned_count: int
+    market_value_by_currency: dict[str, float] = field(default_factory=dict)
+    allocation_by_currency: dict[str, float] = field(default_factory=dict)
+    day_pnl_by_currency: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class HistoryPoint:
     date: str
     symbol: str
@@ -132,6 +149,7 @@ class HistoryPoint:
     latest_data_date: str | None = None
     data_age_days: int | None = None
     freshness_status: str | None = None
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -203,6 +221,7 @@ class DailyReport:
     analyses: list[AssetAnalysis]
     market_brief: str
     portfolio: list[PortfolioSummary] = field(default_factory=list)
+    themes: list[ThemeSummary] = field(default_factory=list)
     history: dict[str, list[HistoryPoint]] = field(default_factory=dict)
     insights: InsightSummary = field(default_factory=InsightSummary)
     benchmarks: list[BenchmarkSnapshot] = field(default_factory=list)
@@ -217,6 +236,7 @@ class DailyReport:
             "language": self.language,
             "market_brief": self.market_brief,
             "portfolio": [item.__dict__ for item in self.portfolio],
+            "themes": [item.__dict__ for item in self.themes],
             "history": {
                 symbol: [point.__dict__ for point in points]
                 for symbol, points in self.history.items()

@@ -29,6 +29,16 @@ class SymbolTrend:
 
 
 @dataclass(frozen=True)
+class ThemeSnapshot:
+    tag: str
+    symbols: list[str]
+    average_score: float
+    average_relative_20d: float | None
+    high_risk_count: int
+    allocation_by_currency: dict[str, float]
+
+
+@dataclass(frozen=True)
 class DashboardData:
     generated_at: datetime
     records: list[HistoryPoint]
@@ -36,6 +46,7 @@ class DashboardData:
     symbol_trends: list[SymbolTrend]
     risk_leaders: list[SymbolTrend]
     contribution_leaders: list[SymbolTrend]
+    themes: list[ThemeSnapshot]
 
 
 def build_dashboard_data(records: list[HistoryPoint], max_points: int = 90) -> DashboardData:
@@ -63,6 +74,7 @@ def build_dashboard_data(records: list[HistoryPoint], max_points: int = 90) -> D
         symbol_trends=trends,
         risk_leaders=risk_leaders,
         contribution_leaders=contribution_leaders,
+        themes=_theme_snapshots(trends),
     )
 
 
@@ -83,6 +95,8 @@ def render_dashboard(data: DashboardData) -> str:
     risk_rows = "\n".join(_risk_row(trend) for trend in data.risk_leaders)
     contribution_rows = "\n".join(_contribution_row(trend) for trend in data.contribution_leaders)
     latest_rows = "\n".join(_latest_row(trend) for trend in data.symbol_trends)
+    theme_rows = "\n".join(_theme_row(theme) for theme in data.themes)
+    research_matrix = _research_matrix_html(data)
     dashboard_json = _dashboard_json(data)
     return f"""<!doctype html>
 <html lang="en" data-lang="en">
@@ -94,9 +108,23 @@ def render_dashboard(data: DashboardData) -> str:
   <style>
     {ui_styles()}
     .dashboard-table {{ margin-bottom: 22px; }}
+    .dashboard-header h1 {{ font-size: 40px; }}
     .hero-panel dl {{ margin: 0; display: grid; gap: 10px; }}
-    .hero-panel dt {{ color: #a9b8b1; font-size: 12px; }}
-    .hero-panel dd {{ margin: 0; font-weight: 760; color: #ffffff; }}
+    .hero-panel dt {{ color: var(--muted); font-size: 12px; }}
+    .hero-panel dd {{ margin: 0; font-weight: 760; color: var(--ink); }}
+    .dashboard-summary {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--canvas-soft); }}
+    .dashboard-summary .kpi {{ border: 0; border-right: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; }}
+    .dashboard-summary .kpi:last-child {{ border-right: 0; }}
+    .matrix-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0 20px; }}
+    .matrix-panel {{ min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); box-shadow: var(--shadow); }}
+    .matrix-panel h3 {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+    .matrix-panel h3 span {{ color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; }}
+    .matrix-row {{ display: grid; grid-template-columns: 82px 1fr 28px; gap: 9px; align-items: center; padding: 7px 0; color: var(--muted); font-size: 12px; }}
+    .matrix-track {{ height: 6px; overflow: hidden; border-radius: 3px; background: var(--line); }}
+    .matrix-track span {{ display: block; height: 100%; background: var(--brand); }}
+    .matrix-row.amber .matrix-track span {{ background: var(--amber); }}
+    .matrix-row.red .matrix-track span {{ background: var(--red); }}
+    .matrix-row.blue .matrix-track span {{ background: var(--blue); }}
     .controls {{ margin: 18px 0 18px; display: grid; grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(160px, 0.8fr)); gap: 12px; align-items: end; }}
     .field label {{ display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 760; }}
     .field input, .field select {{ width: 100%; min-height: 40px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 10px; background: var(--canvas); color: var(--ink); font: inherit; }}
@@ -116,7 +144,7 @@ def render_dashboard(data: DashboardData) -> str:
     .hidden-by-filter {{ display: none !important; }}
     .row-action {{ border: 0; padding: 0; background: transparent; color: var(--brand-strong); font: inherit; font-weight: 760; cursor: pointer; }}
     .empty-state {{ margin: 10px 0 18px; }}
-    @media (max-width: 900px) {{ .controls, .detail-panel {{ grid-template-columns: 1fr; }} }}
+    @media (max-width: 900px) {{ .controls, .detail-panel, .matrix-grid {{ grid-template-columns: 1fr; }} .dashboard-summary {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} .dashboard-summary .kpi:nth-child(2) {{ border-right: 0; }} .dashboard-summary .kpi:nth-child(-n+2) {{ border-bottom: 1px solid var(--line); }} }}
   </style>
 </head>
 <body>
@@ -125,7 +153,7 @@ def render_dashboard(data: DashboardData) -> str:
     <div class="brand-mark">AI Market Pulse</div>
     {language_toggle()}
   </nav>
-  <header class="hero">
+  <header class="hero dashboard-header">
     <div>
       <div class="eyebrow">{lang("Dashboard", "仪表盘")}</div>
       <h1>{lang("Portfolio Research Cockpit", "组合研究驾驶舱")}</h1>
@@ -139,23 +167,30 @@ def render_dashboard(data: DashboardData) -> str:
       </dl>
     </aside>
   </header>
-  <section class="grid" aria-label="Dashboard summary">
+  <section class="dashboard-summary" aria-label="Dashboard summary">
     {kpis}
   </section>
+  {research_matrix}
   <h2>{lang("Explore Symbols", "探索标的")}</h2>
   <p class="section-note">{lang("Filter by symbol, risk, relative strength, and history window. Click any card or table row for a focused drilldown.", "按代码、风险、相对强弱和历史窗口过滤。点击任意卡片或表格行查看单股详情。")}</p>
   {_controls_html()}
   {_detail_html()}
+  <h2>{lang("Portfolio Net Value", "组合净值")}</h2>
+  <p class="section-note">{lang("Grouped by currency so mixed portfolios remain readable without hiding currency risk.", "按币种分组展示，让多币种组合在可读的同时保留汇率风险提示。")}</p>
+  <section class="wide-grid">
+    {portfolio_cards or f'<div class="panel muted">{lang("No portfolio market value history yet. Add quantity and cost_basis to assets, then run the report.", "暂无组合市值历史。给资产加入 quantity 和 cost_basis 后重新运行报告即可。")}</div>'}
+  </section>
+  <h2>{lang("Theme Research", "主题研究")}</h2>
+  <p class="section-note">{lang("Tags reveal grouped signal strength, benchmark performance, allocation, and concentrated risk.", "通过标签观察分组信号强度、基准表现、仓位与集中风险。")}</p>
+  <table class="dashboard-table">
+    <thead><tr><th>{lang("Theme", "主题")}</th><th>{lang("Symbols", "标的")}</th><th>{lang("Avg score", "平均评分")}</th><th>{lang("Rel 20D", "相对20日")}</th><th>{lang("High risk", "高风险")}</th><th>{lang("Allocation", "仓位")}</th></tr></thead>
+    <tbody>{theme_rows or f'<tr><td colspan="6" class="muted">{lang("No tags in recent history.", "近期历史中暂无标签。")}</td></tr>'}</tbody>
+  </table>
   <h2>{lang("Score Changes", "评分变化")}</h2>
   <p class="section-note">{lang("A compact view of signal momentum for each tracked symbol.", "快速观察每个标的的信号动量变化。")}</p>
   <div class="tool-row"><span class="muted" data-filter-count></span><button class="ghost-button" type="button" data-reset-filters>{lang("Reset filters", "重置筛选")}</button></div>
   <section class="grid" data-symbol-cards>
     {score_cards or f'<div class="panel muted">{lang("No score history yet.", "暂无评分历史。")}</div>'}
-  </section>
-  <h2>{lang("Portfolio Net Value", "组合净值")}</h2>
-  <p class="section-note">{lang("Grouped by currency so mixed portfolios remain readable without hiding currency risk.", "按币种分组展示，让多币种组合在可读的同时保留汇率风险提示。")}</p>
-  <section class="wide-grid">
-    {portfolio_cards or f'<div class="panel muted">{lang("No portfolio market value history yet. Add quantity and cost_basis to assets, then run the report.", "暂无组合市值历史。给资产加入 quantity 和 cost_basis 后重新运行报告即可。")}</div>'}
   </section>
   <h2>{lang("Risk Board", "风险榜")}</h2>
   <table class="dashboard-table" data-latest-table>
@@ -219,6 +254,43 @@ def _portfolio_series(records: list[HistoryPoint], max_points: int) -> list[Port
     return series
 
 
+def _theme_snapshots(trends: list[SymbolTrend]) -> list[ThemeSnapshot]:
+    grouped: dict[str, list[HistoryPoint]] = {}
+    totals: dict[str, float] = {}
+    for trend in trends:
+        point = trend.latest
+        if point.market_value is not None:
+            currency = point.currency or "UNKNOWN"
+            totals[currency] = totals.get(currency, 0) + abs(point.market_value)
+        for tag in point.tags or []:
+            clean = str(tag).strip()
+            if clean and clean.casefold() != "benchmark":
+                grouped.setdefault(clean, []).append(point)
+
+    result: list[ThemeSnapshot] = []
+    for tag, points in grouped.items():
+        relative = [point.relative_return_20d for point in points if point.relative_return_20d is not None]
+        allocations: dict[str, float] = {}
+        for point in points:
+            if point.market_value is None:
+                continue
+            currency = point.currency or "UNKNOWN"
+            total = totals.get(currency, 0)
+            if total:
+                allocations[currency] = allocations.get(currency, 0) + point.market_value / total
+        result.append(
+            ThemeSnapshot(
+                tag=tag,
+                symbols=sorted(point.symbol for point in points),
+                average_score=round(sum(point.score for point in points) / len(points), 2),
+                average_relative_20d=round(sum(relative) / len(relative), 6) if relative else None,
+                high_risk_count=sum(1 for point in points if point.risk_level == "high"),
+                allocation_by_currency={key: round(value, 6) for key, value in sorted(allocations.items())},
+            )
+        )
+    return sorted(result, key=lambda item: (-item.high_risk_count, -len(item.symbols), item.tag.casefold()))
+
+
 def _kpis(data: DashboardData) -> str:
     latest = [trend.latest for trend in data.symbol_trends]
     portfolio_value = sum(point.market_value or 0 for point in latest)
@@ -235,6 +307,35 @@ def _kpis(data: DashboardData) -> str:
         f'<div class="panel kpi"><span class="muted">{label}</span><strong>{html.escape(value)}</strong><div class="muted">{note}</div></div>'
         for label, value, note in cards
     )
+
+
+def _research_matrix_html(data: DashboardData) -> str:
+    latest = [trend.latest for trend in data.symbol_trends]
+    total = len(latest)
+    risk_counts = {level: sum(1 for point in latest if point.risk_level == level) for level in ["low", "medium", "high"]}
+    relative_counts = {
+        bucket: sum(1 for point in latest if _relative_bucket(point.relative_return_20d, point.relative_return_60d) == bucket)
+        for bucket in ["outperforming", "tracking", "mixed", "underperforming", "unknown"]
+    }
+    freshness_counts = {
+        "fresh": sum(1 for point in latest if point.freshness_status == "fresh"),
+        "flagged": sum(1 for point in latest if point.freshness_status not in {None, "fresh"}),
+        "unknown": sum(1 for point in latest if point.freshness_status is None),
+    }
+
+    def rows(items: list[tuple[str, int, str]]) -> str:
+        return "".join(
+            f'<div class="matrix-row {css}"><span>{html.escape(label)}</span><div class="matrix-track"><span style="width:{(count / total * 100) if total else 0:.1f}%"></span></div><strong>{count}</strong></div>'
+            for label, count, css in items
+        )
+
+    return f"""
+<section class="matrix-grid" aria-label="Research matrix">
+  <article class="matrix-panel"><h3>{lang("Signal Risk", "信号风险")}<span>RISK</span></h3>{rows([("low", risk_counts["low"], ""), ("medium", risk_counts["medium"], "amber"), ("high", risk_counts["high"], "red")])}</article>
+  <article class="matrix-panel"><h3>{lang("Relative Strength", "相对强弱")}<span>BENCHMARK</span></h3>{rows([("outperform", relative_counts["outperforming"], ""), ("tracking", relative_counts["tracking"], "blue"), ("mixed", relative_counts["mixed"], "amber"), ("underperform", relative_counts["underperforming"], "red"), ("unknown", relative_counts["unknown"], "amber")])}</article>
+  <article class="matrix-panel"><h3>{lang("Data Freshness", "数据新鲜度")}<span>QUALITY</span></h3>{rows([("fresh", freshness_counts["fresh"], ""), ("flagged", freshness_counts["flagged"], "red"), ("unknown", freshness_counts["unknown"], "amber")])}</article>
+</section>
+"""
 
 
 def _controls_html() -> str:
@@ -322,6 +423,23 @@ def _score_card(trend: SymbolTrend) -> str:
   {_score_chart(trend.points)}
 </article>
 """
+
+
+def _theme_row(theme: ThemeSnapshot) -> str:
+    allocations = ", ".join(
+        f"{currency} {_pct(value)}" for currency, value in theme.allocation_by_currency.items()
+    ) or "n/a"
+    risk_class = "risk-high" if theme.high_risk_count else "risk-low"
+    return (
+        "<tr>"
+        f"<td><strong>{html.escape(theme.tag)}</strong></td>"
+        f"<td>{html.escape(', '.join(theme.symbols))}</td>"
+        f"<td>{theme.average_score:.1f}</td>"
+        f'<td class="{_value_class(theme.average_relative_20d)}">{html.escape(_pct(theme.average_relative_20d))}</td>'
+        f'<td class="{risk_class}">{theme.high_risk_count}</td>'
+        f"<td>{html.escape(allocations)}</td>"
+        "</tr>"
+    )
 
 
 def _risk_row(trend: SymbolTrend) -> str:

@@ -7,6 +7,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .dashboard import write_dashboard
+from .group_stats import build_theme_summaries
 from .history import attach_history, records_from_report
 from .models import (
     Asset,
@@ -51,6 +52,7 @@ def build_demo(output_dir: str | Path, title: str = "AI Market Pulse Demo") -> D
         analyses=analyses,
         market_brief="5 assets analyzed. Benchmark context, relative strength, and data freshness are enabled in demo mode.",
         portfolio=portfolio,
+        themes=build_theme_summaries(analyses),
         benchmarks=_demo_benchmarks(),
         insights=_demo_insights(analyses),
         portfolio_ai_summary=(

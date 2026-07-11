@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- Daily-report signal distribution now uses the scoring engine's stance categories,
+  and missing freshness metadata is surfaced as a data-quality alert.
+- Dashboard relative-strength matrices now account for symbols without benchmark
+  data instead of silently dropping them from the distribution.
+- History writes are now locked, atomic, and upserted by symbol/date, preventing duplicate or corrupted JSONL rows under concurrent runs.
+- Long/short allocation now uses gross exposure, so offsetting positions retain meaningful signed allocation percentages.
+
 - yfinance now requests a wider calendar window and trims to the trading-day target, so
   long moving averages such as SMA200 are actually computed (previously `lookback_days`
   calendar days yielded too few trading rows and SMA200 was always empty).
@@ -11,6 +18,18 @@
   (`MARKET_PULSE_REPORT_URL`) is included instead when provided.
 
 ### Added
+
+- A unified dark quant-research design system across the local console, daily report,
+  history dashboard, and static site, with a persistent light-theme option.
+- A four-stage visual research workflow covering holdings input, theme research,
+  report Q&A, and threshold monitoring.
+- Real-data signal overviews in daily reports and a dashboard research matrix for
+  risk, benchmark-relative strength, and data freshness.
+- Tag-driven theme research in daily reports and the history dashboard, including grouped scores, returns, relative strength, allocation, contribution, and risk pressure.
+- Visual brokerage screenshot import with AI transcription, editable confirmation, symbol normalization, and a saved console watchlist.
+- Report-grounded single-turn AI Q&A in the local console.
+- Plugin-style `ProviderSpec` registry for built-in and runtime market data providers.
+- Deduplicated threshold alerts plus `market-pulse alert-check` and an opt-in intraday GitHub Actions workflow.
 
 - Project positioning now explicitly includes AI-assisted quant trading research,
   including watchlist screening, signal review, benchmark comparison, portfolio

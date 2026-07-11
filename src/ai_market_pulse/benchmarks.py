@@ -32,7 +32,7 @@ def fetch_benchmarks(
     for asset in _benchmark_assets(assets, settings):
         key = _symbol_key(asset.symbol)
         try:
-            hydrated_asset, snapshot, history = fetch_history(asset, lookback_days, providers, as_of=today)
+            hydrated_asset, snapshot, history = fetch_history(asset, lookback_days, providers)
             metrics = calculate_indicators(history)
             freshness = build_data_freshness(snapshot, today, settings.stale_after_days)
             benchmark_data = BenchmarkData(

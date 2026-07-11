@@ -10,9 +10,7 @@ def enrich_portfolio(analyses: list[AssetAnalysis]) -> tuple[list[AssetAnalysis]
     totals_by_currency: dict[str, float] = {}
     for position in positions:
         if position:
-            totals_by_currency[position.currency] = totals_by_currency.get(position.currency, 0) + abs(
-                position.market_value
-            )
+            totals_by_currency[position.currency] = totals_by_currency.get(position.currency, 0) + abs(position.market_value)
 
     enriched: list[AssetAnalysis] = []
     for analysis, position in zip(analyses, positions):
@@ -40,7 +38,7 @@ def _build_position(analysis: AssetAnalysis) -> PositionMetrics | None:
     if previous_close not in (None, 0):
         day_pnl = float(quantity) * (last_close - float(previous_close))
     unrealized_pnl = market_value - cost_value if cost_value is not None else None
-    unrealized_pnl_pct = unrealized_pnl / cost_value if cost_value else None
+    unrealized_pnl_pct = unrealized_pnl / abs(cost_value) if cost_value else None
 
     return PositionMetrics(
         symbol=analysis.asset.symbol,

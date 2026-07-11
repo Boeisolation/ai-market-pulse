@@ -76,6 +76,16 @@ class BenchmarkSettings:
 
 
 @dataclass(frozen=True)
+class AlertSettings:
+    enabled: bool = False
+    score_change: int = 10
+    daily_move: float = 0.05
+    relative_20d_drop: float = 0.05
+    risk_upgrade: bool = True
+    stale_data: bool = True
+
+
+@dataclass(frozen=True)
 class NotificationTarget:
     type: str
     name: str | None = None
@@ -93,6 +103,7 @@ class AppConfig:
     benchmarks: BenchmarkSettings = field(default_factory=BenchmarkSettings)
     news: NewsSettings = field(default_factory=NewsSettings)
     llm: LLMSettings = field(default_factory=LLMSettings)
+    alerts: AlertSettings = field(default_factory=AlertSettings)
     notifications: list[NotificationTarget] = field(default_factory=list)
 
 
@@ -114,6 +125,7 @@ def load_config_from_mapping(raw: dict[str, Any]) -> AppConfig:
     benchmarks_raw = raw.get("benchmarks", {}) or {}
     news_raw = raw.get("news", {}) or {}
     llm_raw = raw.get("llm", {}) or {}
+    alerts_raw = raw.get("alerts", {}) or {}
 
     return AppConfig(
         title=raw.get("title", "AI Market Pulse"),
@@ -124,6 +136,7 @@ def load_config_from_mapping(raw: dict[str, Any]) -> AppConfig:
         benchmarks=BenchmarkSettings(**_filter_dataclass(BenchmarkSettings, benchmarks_raw)),
         news=NewsSettings(**_filter_dataclass(NewsSettings, news_raw)),
         llm=LLMSettings(**_filter_dataclass(LLMSettings, llm_raw)),
+        alerts=AlertSettings(**_filter_dataclass(AlertSettings, alerts_raw)),
         notifications=[
             NotificationTarget(
                 type=item["type"],

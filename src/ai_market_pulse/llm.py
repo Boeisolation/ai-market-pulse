@@ -1,17 +1,15 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
-import re
 from pathlib import Path
 import urllib.request
 from typing import Any
 
 from .config import LLMSettings
 from .models import AssetAnalysis, DailyReport
-
-_PLACEHOLDER_PATTERN = re.compile(r"\{(\w+)\}")
 
 
 def summarize_with_llm(analysis: AssetAnalysis, settings: LLMSettings, language: str) -> str | None:
@@ -58,7 +56,76 @@ def summarize_portfolio_with_llm(report: DailyReport, settings: LLMSettings) -> 
     return _chat_completion(messages, settings)
 
 
-def _chat_completion(messages: list[dict[str, str]], settings: LLMSettings) -> str | None:
+def extract_portfolio_from_image(
+    image: bytes,
+    media_type: str,
+    settings: LLMSettings,
+) -> list[dict[str, Any]]:
+    _require_llm(settings)
+    if media_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise ValueError("Portfolio image must be PNG, JPEG, or WebP.")
+    encoded = base64.b64encode(image).decode("ascii")
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": (
+                "Extract portfolio holdings from a brokerage screenshot. Return JSON only as "
+                '{"assets":[{"symbol":"AAPL","name":"Apple","market":"US","quantity":10,'
+                '"cost_basis":185,"tags":[]}]}. Never infer a missing quantity or cost. Use null. '
+                "For mainland China symbols, preserve the six-digit code. This is transcription, not financial advice."
+            ),
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Read every visible holding. Ignore cash, account numbers, totals, and buttons."},
+                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{encoded}"}},
+            ],
+        },
+    ]
+    content = _chat_completion(messages, settings)
+    if not content:
+        raise RuntimeError("The AI provider did not return a portfolio extraction.")
+    parsed = _parse_json(content)
+    assets = parsed.get("assets") if isinstance(parsed, dict) else parsed
+    if not isinstance(assets, list):
+        raise RuntimeError("The AI response did not contain an assets list.")
+    return [item for item in assets if isinstance(item, dict)]
+
+
+def answer_report_question(
+    report: dict[str, Any],
+    question: str,
+    settings: LLMSettings,
+    language: str = "zh-CN",
+) -> str:
+    _require_llm(settings)
+    clean_question = question.strip()
+    if not clean_question:
+        raise ValueError("Enter a question about the report.")
+    context = _report_question_context(report)
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": (
+                "You answer questions using only the supplied AI Market Pulse report JSON. "
+                "Cite concrete symbols, scores, returns, risk reasons, and freshness fields. "
+                "If the report lacks evidence, say so. Do not issue buy/sell orders or promise returns. "
+                f"Reply in {'Chinese' if language.lower().startswith('zh') else 'English'}."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Question: {clean_question}\n\nReport context:\n{json.dumps(context, ensure_ascii=False)}",
+        },
+    ]
+    content = _chat_completion(messages, settings)
+    if not content:
+        raise RuntimeError("The AI provider did not return an answer.")
+    return content
+
+
+def _chat_completion(messages: list[dict[str, Any]], settings: LLMSettings) -> str | None:
     if not settings.enabled:
         return None
     api_key = os.getenv(settings.api_key_env)
@@ -96,6 +163,66 @@ def _chat_completion(messages: list[dict[str, str]], settings: LLMSettings) -> s
     return content
 
 
+def _require_llm(settings: LLMSettings) -> None:
+    if not settings.enabled:
+        raise RuntimeError("AI is disabled.")
+    if not os.getenv(settings.api_key_env):
+        raise RuntimeError(f"{settings.api_key_env} is not configured.")
+    if not settings.model:
+        raise RuntimeError("OPENAI_MODEL or llm.model is not configured.")
+
+
+def _parse_json(content: str) -> Any:
+    text = content.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1]
+        text = text.rsplit("```", 1)[0].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        starts = [index for index in (text.find("{"), text.find("[")) if index >= 0]
+        if not starts:
+            raise RuntimeError("The AI response was not valid JSON.")
+        start = min(starts)
+        end = max(text.rfind("}"), text.rfind("]"))
+        if end < start:
+            raise RuntimeError("The AI response was not valid JSON.")
+        try:
+            return json.loads(text[start : end + 1])
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("The AI response was not valid JSON.") from exc
+
+
+def _report_question_context(report: dict[str, Any]) -> dict[str, Any]:
+    analyses = []
+    for item in report.get("analyses", [])[:80]:
+        if not isinstance(item, dict):
+            continue
+        analyses.append(
+            {
+                "asset": item.get("asset"),
+                "snapshot": item.get("snapshot"),
+                "metrics": item.get("metrics"),
+                "signal": item.get("signal"),
+                "position": item.get("position"),
+                "benchmark": item.get("benchmark"),
+                "freshness": item.get("freshness"),
+                "warnings": item.get("warnings"),
+                "news": (item.get("news") or [])[:3],
+            }
+        )
+    return {
+        "title": report.get("title"),
+        "generated_at": report.get("generated_at"),
+        "market_brief": report.get("market_brief"),
+        "portfolio": report.get("portfolio"),
+        "themes": report.get("themes"),
+        "insights": report.get("insights"),
+        "benchmarks": report.get("benchmarks"),
+        "analyses": analyses,
+    }
+
+
 def _asset_context(analysis: AssetAnalysis, language: str) -> dict[str, Any]:
     return {
         "language": language,
@@ -127,6 +254,7 @@ def _portfolio_context(report: DailyReport) -> dict[str, Any]:
         "generated_at": report.generated_at.isoformat(),
         "market_brief": report.market_brief,
         "portfolio": [item.__dict__ for item in report.portfolio],
+        "themes": [item.__dict__ for item in report.themes],
         "benchmarks": [
             {
                 **item.__dict__,
@@ -198,15 +326,7 @@ def _render_prompt_template(
         key: json.dumps(value, ensure_ascii=False, indent=2) if not isinstance(value, str) else value
         for key, value in values.items()
     }
-    # A plain str.format/format_map call aborts on the first ill-formed format
-    # spec it hits (e.g. a literal JSON example like {"foo": 1}), discarding
-    # every other valid substitution in the template. Matching only simple
-    # {identifier} placeholders and leaving anything else untouched means one
-    # stray brace can't take down substitutions elsewhere in the template.
-    return _PLACEHOLDER_PATTERN.sub(
-        lambda match: rendered_values.get(match.group(1), match.group(0)),
-        template,
-    )
+    return template.format(**rendered_values)
 
 
 def _cache_key(payload: dict[str, Any]) -> str:

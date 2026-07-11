@@ -96,6 +96,59 @@ def read_portfolio_assets(input_path: str | Path) -> list[dict[str, Any]]:
     return assets
 
 
+def normalize_portfolio_assets(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    assets: list[dict[str, Any]] = []
+    index_by_symbol: dict[str, int] = {}
+    for record in records:
+        symbol = _symbol_text(record.get("symbol"))
+        if not symbol:
+            continue
+        normalized_symbol = _normalize_symbol(symbol)
+        asset: dict[str, Any] = {
+            "symbol": normalized_symbol,
+            "market": _clean_text(record.get("market")) or _infer_market(normalized_symbol),
+        }
+        for key in ["name", "currency", "note"]:
+            value = _clean_text(record.get(key))
+            if value:
+                asset[key] = value
+        for key in ["quantity", "cost_basis"]:
+            value = _number(record.get(key))
+            if value is not None:
+                asset[key] = value
+        raw_tags = record.get("tags")
+        tags = [str(item).strip() for item in raw_tags if str(item).strip()] if isinstance(raw_tags, list) else _tags(raw_tags)
+        if tags:
+            asset["tags"] = tags
+        if normalized_symbol in index_by_symbol:
+            index = index_by_symbol[normalized_symbol]
+            assets[index] = _merge_portfolio_asset(assets[index], asset)
+        else:
+            index_by_symbol[normalized_symbol] = len(assets)
+            assets.append(asset)
+    return assets
+
+
+def _merge_portfolio_asset(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(left)
+    left_qty = _number(left.get("quantity"))
+    right_qty = _number(right.get("quantity"))
+    left_cost = _number(left.get("cost_basis"))
+    right_cost = _number(right.get("cost_basis"))
+    if left_qty is not None and right_qty is not None:
+        total_qty = left_qty + right_qty
+        merged["quantity"] = total_qty
+        if total_qty and left_cost is not None and right_cost is not None:
+            merged["cost_basis"] = round((left_qty * left_cost + right_qty * right_cost) / total_qty, 6)
+    for key in ["name", "market", "currency", "note", "quantity", "cost_basis"]:
+        if key not in merged and key in right:
+            merged[key] = right[key]
+    tags = list(dict.fromkeys([*(left.get("tags") or []), *(right.get("tags") or [])]))
+    if tags:
+        merged["tags"] = tags
+    return merged
+
+
 def _read_frame(path: Path) -> pd.DataFrame:
     suffix = path.suffix.lower()
     if suffix == ".csv":
@@ -164,41 +217,13 @@ def _number(value: object) -> float | None:
     text = str(value).strip()
     if not text:
         return None
-    is_negative = False
-    if text.startswith("(") and text.endswith(")"):
-        is_negative = True
-        text = text[1:-1].strip()
-    if _is_european_decimal_comma(text):
-        whole, decimals = text.rsplit(",", 1)
-        text = f"{whole.replace('.', '')}.{decimals}"
     text = re.sub(r"[,$¥￥€£\s]", "", text)
-    if is_negative:
-        text = f"-{text}"
     if text.endswith("%"):
-        try:
-            return float(text[:-1]) / 100
-        except ValueError:
-            return None
+        return float(text[:-1]) / 100
     try:
         return float(text)
     except ValueError:
         return None
-
-
-def _is_european_decimal_comma(text: str) -> bool:
-    if text.count(",") != 1:
-        return False
-    whole, decimals = text.rsplit(",", 1)
-    if not (decimals.isdigit() and 1 <= len(decimals) <= 2):
-        return False
-    # A "." in the whole part is only a European thousands separator (not a
-    # decimal point) if every dot-delimited group is a plain digit group with
-    # 3 digits after the first — e.g. "1.234" or "12.345.678".
-    if "." not in whole:
-        return True
-    groups = whole.lstrip("-").split(".")
-    leading_ok = groups[0].isdigit() and 1 <= len(groups[0]) <= 3
-    return leading_ok and all(group.isdigit() and len(group) == 3 for group in groups[1:])
 
 
 def _tags(value: object) -> list[str]:
@@ -208,17 +233,10 @@ def _tags(value: object) -> list[str]:
     return [item.strip() for item in re.split(r"[,;|，；、]", text) if item.strip()]
 
 
-# Narrow special-case: these are well-known Shanghai-listed *index* codes that
-# happen to share the "000" prefix with ordinary Shenzhen stock codes (e.g.
-# "000001" Ping An Bank, which must stay .SZ). This is not a general fix for
-# that prefix ambiguity — just an allowlist for common indices.
-_SHANGHAI_INDEX_CODES = {"000300", "000905", "000016"}
-
-
 def _normalize_symbol(symbol: str) -> str:
     text = symbol.strip().upper()
     if re.fullmatch(r"\d{6}", text):
-        if text in _SHANGHAI_INDEX_CODES or text.startswith(("6", "5", "9")):
+        if text.startswith(("6", "5", "9")):
             return f"{text}.SS"
         return f"{text}.SZ"
     return text

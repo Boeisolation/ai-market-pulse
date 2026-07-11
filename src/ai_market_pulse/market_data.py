@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Callable
 import os
@@ -14,45 +14,67 @@ class MarketDataError(RuntimeError):
     pass
 
 
-Provider = Callable[[Asset, int, date | None], tuple[Asset, PriceSnapshot, pd.DataFrame]]
+Provider = Callable[[Asset, int], tuple[Asset, PriceSnapshot, pd.DataFrame]]
+
+
+@dataclass(frozen=True)
+class ProviderSpec:
+    name: str
+    fetch: Provider
+    can_handle: Callable[[Asset], bool]
+    aliases: tuple[str, ...] = ()
+    markets: tuple[str, ...] = ()
+
+
+_PROVIDERS: dict[str, ProviderSpec] = {}
+_BUILTINS_READY = False
+
+
+def register_provider(spec: ProviderSpec, *, replace_existing: bool = False) -> None:
+    names = (spec.name, *spec.aliases)
+    keys = [name.strip().lower() for name in names if name.strip()]
+    if not keys:
+        raise ValueError("Provider must define a name.")
+    conflicts = [key for key in keys if key in _PROVIDERS]
+    if conflicts and not replace_existing:
+        raise ValueError(f"Provider already registered: {', '.join(conflicts)}")
+    for key in keys:
+        _PROVIDERS[key] = spec
+
+
+def get_provider(name: str) -> ProviderSpec | None:
+    _ensure_builtin_providers()
+    return _PROVIDERS.get(name.strip().lower())
 
 
 def fetch_history(
     asset: Asset,
     lookback_days: int,
     providers: list[str] | tuple[str, ...] | None = None,
-    as_of: date | None = None,
 ) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     provider_names = list(providers or ["akshare", "yfinance"])
     errors: list[str] = []
     for provider_name in provider_names:
-        provider = _provider(provider_name)
-        if provider is None:
+        spec = get_provider(provider_name)
+        if spec is None:
             errors.append(f"{provider_name}: unsupported provider")
             continue
+        if not spec.can_handle(asset):
+            errors.append(f"{provider_name}: does not support {asset.market} asset {asset.symbol}")
+            continue
         try:
-            return provider(asset, lookback_days, as_of)
+            return spec.fetch(asset, lookback_days)
         except MarketDataError as exc:
             errors.append(f"{provider_name}: {exc}")
     raise MarketDataError(f"No provider returned data for {asset.symbol}. " + " | ".join(errors))
 
 
 def _provider(name: str) -> Provider | None:
-    normalized = name.strip().lower()
-    if normalized == "akshare":
-        return _fetch_akshare
-    if normalized == "baostock":
-        return _fetch_baostock
-    if normalized == "tushare":
-        return _fetch_tushare
-    if normalized in {"yfinance", "yf"}:
-        return _fetch_yfinance
-    return None
+    spec = get_provider(name)
+    return spec.fetch if spec else None
 
 
-def _fetch_yfinance(
-    asset: Asset, lookback_days: int, as_of: date | None = None
-) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+def _fetch_yfinance(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     try:
         import yfinance as yf
     except ImportError as exc:
@@ -79,9 +101,7 @@ def _fetch_yfinance(
     return replace(asset, name=name, currency=currency), snapshot, history
 
 
-def _fetch_akshare(
-    asset: Asset, lookback_days: int, as_of: date | None = None
-) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+def _fetch_akshare(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     code = _a_share_code(asset)
     if not code:
         raise MarketDataError("AkShare provider only handles mainland A-share symbols.")
@@ -90,7 +110,7 @@ def _fetch_akshare(
     except ImportError as exc:
         raise MarketDataError("akshare is not installed. Run `pip install -e .[cn]` to enable it.") from exc
 
-    end_date = as_of or date.today()
+    end_date = date.today()
     start_date = end_date - timedelta(days=max(lookback_days * 2, 90))
     try:
         raw = ak.stock_zh_a_hist(
@@ -121,9 +141,7 @@ def _fetch_akshare(
     return replace(asset, name=name, currency=currency), snapshot, history
 
 
-def _fetch_baostock(
-    asset: Asset, lookback_days: int, as_of: date | None = None
-) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+def _fetch_baostock(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     code = _a_share_code(asset)
     if not code:
         raise MarketDataError("Baostock provider only handles mainland A-share symbols.")
@@ -134,7 +152,7 @@ def _fetch_baostock(
 
     exchange = "sh" if code.startswith(("6", "5", "9")) else "sz"
     bs_code = f"{exchange}.{code}"
-    end_date = as_of or date.today()
+    end_date = date.today()
     start_date = end_date - timedelta(days=max(lookback_days * 2, 90))
     login = bs.login()
     if getattr(login, "error_code", "0") != "0":
@@ -163,9 +181,7 @@ def _fetch_baostock(
     return replace(asset, name=name, currency=currency), snapshot, history
 
 
-def _fetch_tushare(
-    asset: Asset, lookback_days: int, as_of: date | None = None
-) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+def _fetch_tushare(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     code = _a_share_code(asset)
     if not code:
         raise MarketDataError("Tushare provider only handles mainland A-share symbols.")
@@ -178,7 +194,7 @@ def _fetch_tushare(
         raise MarketDataError("tushare is not installed. Run `pip install -e .[tushare]` to enable it.") from exc
     suffix = "SH" if code.startswith(("6", "5", "9")) else "SZ"
     ts_code = f"{code}.{suffix}"
-    end_date = as_of or date.today()
+    end_date = date.today()
     start_date = end_date - timedelta(days=max(lookback_days * 2, 90))
     pro = ts.pro_api(token)
     try:
@@ -263,16 +279,34 @@ def _a_share_code(asset: Asset) -> str | None:
 
 
 def provider_can_handle(provider: str, asset: Asset) -> bool:
-    name = provider.strip().lower()
-    if name in {"akshare", "baostock", "tushare"}:
-        return _a_share_code(asset) is not None
-    if name in {"yfinance", "yf"}:
-        return True
-    return False
+    spec = get_provider(provider)
+    return bool(spec and spec.can_handle(asset))
 
 
 def supported_providers() -> list[str]:
-    return ["akshare", "baostock", "tushare", "yfinance"]
+    _ensure_builtin_providers()
+    return sorted({spec.name for spec in _PROVIDERS.values()})
+
+
+def _ensure_builtin_providers() -> None:
+    global _BUILTINS_READY
+    if _BUILTINS_READY:
+        return
+    def mainland(asset: Asset) -> bool:
+        return _a_share_code(asset) is not None
+    register_provider(ProviderSpec("akshare", _fetch_akshare, mainland, markets=("CN",)))
+    register_provider(ProviderSpec("baostock", _fetch_baostock, mainland, markets=("CN",)))
+    register_provider(ProviderSpec("tushare", _fetch_tushare, mainland, markets=("CN",)))
+    register_provider(
+        ProviderSpec(
+            "yfinance",
+            _fetch_yfinance,
+            lambda asset: True,
+            aliases=("yf",),
+            markets=("US", "CN", "HK", "CRYPTO"),
+        )
+    )
+    _BUILTINS_READY = True
 
 
 def _safe_info(ticker: object) -> dict:

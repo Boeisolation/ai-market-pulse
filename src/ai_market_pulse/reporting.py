@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import html
 import json
-import re
 from pathlib import Path
 
-from .models import AssetAnalysis, BenchmarkSnapshot, DailyReport, DataFreshness, HistoryPoint, PortfolioSummary
+from .models import AssetAnalysis, BenchmarkSnapshot, DailyReport, DataFreshness, HistoryPoint, PortfolioSummary, ThemeSummary
 from .ui import lang, language_boot_script, language_runtime_script, language_toggle, ui_styles
 
 
@@ -41,6 +40,7 @@ def render_markdown(report: DailyReport) -> str:
         lines.extend(["## AI Portfolio Brief", "", report.portfolio_ai_summary, ""])
     if report.portfolio:
         lines.extend(_portfolio_markdown(report.portfolio))
+    lines.extend(_themes_markdown(report.themes))
     lines.extend(_benchmarks_markdown(report.benchmarks))
     lines.extend(_insights_markdown(report))
     lines.extend(
@@ -84,10 +84,11 @@ def render_html(report: DailyReport) -> str:
     title = html.escape(report.title)
     brief = html.escape(report.market_brief)
     portfolio = _portfolio_html(report.portfolio)
+    themes = _themes_html(report.themes)
     benchmarks = _benchmarks_html(report.benchmarks)
     ai_brief = _ai_brief_html(report.portfolio_ai_summary)
-    summary_strip = _summary_strip_html(report)
     insights = _insights_html(report)
+    signal_overview = _signal_overview_html(report)
     default_lang = "zh" if report.language.lower().startswith("zh") else "en"
     high_risk = sum(1 for item in report.analyses if item.signal.risk_level == "high")
     positioned = sum(1 for item in report.analyses if item.position)
@@ -100,15 +101,24 @@ def render_html(report: DailyReport) -> str:
   {language_boot_script(default_lang)}
   <style>
     {ui_styles()}
-    .report-brief {{ margin: 18px 0; }}
+    .report-brief {{ margin: 14px 0; border-left: 3px solid var(--brand); box-shadow: none; }}
     .summary-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 18px 0; }}
     .report-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(295px, 1fr)); gap: 16px; }}
-    .strip-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin: 18px 0; }}
-    .strip-row {{ background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }}
-    .strip-row .strip-top {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
-    .strip-row .strip-symbol {{ font-weight: 760; }}
-    .strip-row .strip-meta {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }}
-    .strip-score {{ font-size: 18px; font-weight: 800; line-height: 1; }}
+    .report-header h1 {{ font-size: 40px; }}
+    .signal-board {{ margin: 14px 0; padding: 16px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--canvas-soft); }}
+    .signal-board-head {{ display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }}
+    .signal-board-head strong {{ font-size: 16px; }}
+    .signal-kpis {{ display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }}
+    .signal-kpi {{ min-width: 0; padding: 12px; border-right: 1px solid var(--line); }}
+    .signal-kpi:last-child {{ border-right: 0; }}
+    .signal-kpi span {{ display: block; color: var(--muted); font-size: 11px; }}
+    .signal-kpi strong {{ display: block; margin-top: 5px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 23px; }}
+    .distribution {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }}
+    .distribution-item {{ display: grid; grid-template-columns: auto 1fr auto; gap: 9px; align-items: center; color: var(--muted); font-size: 11px; }}
+    .distribution-track, .score-track {{ height: 6px; border-radius: 3px; overflow: hidden; background: var(--line); }}
+    .distribution-track span, .score-track span {{ display: block; height: 100%; background: var(--brand); }}
+    .distribution-item.neutral .distribution-track span {{ background: var(--amber); }}
+    .distribution-item.defensive .distribution-track span {{ background: var(--red); }}
     .top {{ display: flex; align-items: start; justify-content: space-between; gap: 12px; }}
     .symbol {{ font-size: 22px; font-weight: 780; }}
     .score {{ min-width: 54px; text-align: right; font-size: 30px; line-height: 1; font-weight: 840; color: var(--brand-strong); }}
@@ -117,9 +127,15 @@ def render_html(report: DailyReport) -> str:
     dd {{ margin: 0; font-weight: 680; }}
     .asset-card h3 {{ margin-top: 16px; }}
     .asset-card .spark {{ height: 48px; }}
+    .asset-card {{ position: relative; overflow: hidden; }}
+    .asset-card::before {{ content: ""; position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--brand); }}
+    .asset-card[data-risk="high"]::before {{ background: var(--red); }}
+    .asset-card[data-risk="medium"]::before {{ background: var(--amber); }}
+    .score-track {{ margin: 12px 0 2px; }}
     .hero-panel dl {{ margin: 0; display: grid; gap: 10px; }}
-    .hero-panel dt {{ color: #a9b8b1; }}
-    .hero-panel dd {{ color: #ffffff; }}
+    .hero-panel dt {{ color: var(--muted); }}
+    .hero-panel dd {{ color: var(--ink); }}
+    @media (max-width: 900px) {{ .signal-kpis {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} .signal-kpi {{ border-bottom: 1px solid var(--line); }} .distribution {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
 <body>
@@ -128,7 +144,7 @@ def render_html(report: DailyReport) -> str:
     <div class="brand-mark">AI Market Pulse</div>
     {language_toggle()}
   </nav>
-  <header class="hero">
+  <header class="hero report-header">
     <div>
       <div class="eyebrow">{lang("Daily Quant Research Note", "每日量化研究简报")}</div>
       <h1>{title}</h1>
@@ -144,9 +160,10 @@ def render_html(report: DailyReport) -> str:
     </aside>
   </header>
   <section class="brief report-brief">{brief}<br><span class="muted">{lang("Quant research automation only. This report is not financial advice and does not place trades.", "仅用于量化研究自动化。本报告不构成投资建议，也不会下单交易。")}</span></section>
-  {summary_strip}
+  {signal_overview}
   {ai_brief}
   {portfolio}
+  {themes}
   {benchmarks}
   {insights}
   <h2>{lang("Watchlist", "观察列表")}</h2>
@@ -179,6 +196,25 @@ def _portfolio_markdown(portfolio: list[PortfolioSummary]) -> list[str]:
                 unrealized=_signed_money(summary.unrealized_pnl, summary.currency),
                 unrealized_pct=_pct(summary.unrealized_pnl_pct),
             )
+        )
+    return lines
+
+
+def _themes_markdown(themes: list[ThemeSummary]) -> list[str]:
+    if not themes:
+        return []
+    lines = [
+        "",
+        "## Theme Research",
+        "",
+        "| Theme | Symbols | Avg Score | Position-weighted Score | 20D | Rel 20D | High Risk | Allocation | Day P/L |",
+        "|---|---:|---:|---:|---:|---:|---:|---|---|",
+    ]
+    for item in themes:
+        lines.append(
+            f"| {item.tag} | {len(item.symbols)} | {item.average_score:.1f} | {_num(item.weighted_score)} | "
+            f"{_pct(item.return_20d)} | {_pct(item.relative_return_20d)} | {item.high_risk_count} | "
+            f"{_currency_percentages(item.allocation_by_currency)} | {_currency_values(item.day_pnl_by_currency, signed=True)} |"
         )
     return lines
 
@@ -216,7 +252,7 @@ def _insights_markdown(report: DailyReport) -> list[str]:
         lines.extend(["### Needs Attention", "", "| Symbol | Priority | Risk | Reason | Day P/L | Unrealized |", "|---|---:|---|---|---:|---:|"])
         for item in insights.attention:
             lines.append(
-                f"| {item.symbol} | {item.priority} | {item.risk_level} | {_md_escape(item.reason)} | {_signed_money(item.day_pnl)} | {_signed_money(item.unrealized_pnl)} |"
+                f"| {item.symbol} | {item.priority} | {item.risk_level} | {item.reason} | {_signed_money(item.day_pnl)} | {_signed_money(item.unrealized_pnl)} |"
             )
     else:
         lines.extend(["No rule-based attention items.", ""])
@@ -230,12 +266,12 @@ def _insights_markdown(report: DailyReport) -> list[str]:
         lines.extend(["", "### Risk Findings", ""])
         for finding in insights.risk_findings[:12]:
             value = f" ({_num(finding.value)})" if finding.value is not None else ""
-            lines.append(f"- [{finding.severity}] {finding.symbol}: {_md_escape(finding.message)}{value}")
+            lines.append(f"- [{finding.severity}] {finding.symbol}: {finding.message}{value}")
     if insights.checklist:
         lines.extend(["", "### Checklist", ""])
         for item in insights.checklist:
             prefix = f"{item.symbol}: " if item.symbol else ""
-            lines.append(f"- [{item.priority}] {prefix}{_md_escape(item.text)}")
+            lines.append(f"- [{item.priority}] {prefix}{item.text}")
     return lines
 
 
@@ -276,7 +312,7 @@ def _asset_markdown(item: AssetAnalysis, history: list[HistoryPoint]) -> list[st
         lines.extend(["", "### News", ""])
         for news in item.news:
             label = f"{news.title} - {news.source}" if news.source else news.title
-            lines.append(f"- [{label}]({_safe_href(news.link)})")
+            lines.append(f"- [{label}]({news.link})")
     return lines
 
 
@@ -301,6 +337,39 @@ def _portfolio_html(portfolio: list[PortfolioSummary]) -> str:
     return '<section class="summary-grid">' + "\n".join(cards) + "</section>"
 
 
+def _signal_overview_html(report: DailyReport) -> str:
+    valid = [item for item in report.analyses if item.snapshot.rows > 0]
+    total = len(valid)
+    average = sum(item.signal.score for item in valid) / total if total else 0
+    constructive = sum(1 for item in valid if item.signal.stance in {"constructive", "watch bullish"})
+    neutral = sum(1 for item in valid if item.signal.stance == "neutral")
+    defensive = total - constructive - neutral
+    high_risk = sum(1 for item in valid if item.signal.risk_level == "high")
+    outperforming = sum(1 for item in valid if item.benchmark and item.benchmark.verdict == "outperforming")
+    stale = sum(1 for item in valid if not item.freshness or item.freshness.status != "fresh")
+
+    def width(count: int) -> str:
+        return f"{(count / total * 100) if total else 0:.1f}%"
+
+    return f"""
+<section class="signal-board">
+  <div class="signal-board-head"><strong>{lang("Signal Overview", "信号总览")}</strong><span class="mono muted">RULES / 0—100</span></div>
+  <div class="signal-kpis">
+    <div class="signal-kpi"><span>{lang("Average score", "平均评分")}</span><strong class="gain">{average:.1f}</strong></div>
+    <div class="signal-kpi"><span>{lang("Constructive", "强势信号")}</span><strong>{constructive}</strong></div>
+    <div class="signal-kpi"><span>{lang("High risk", "高风险")}</span><strong class="data-red">{high_risk}</strong></div>
+    <div class="signal-kpi"><span>{lang("Outperforming", "跑赢基准")}</span><strong class="data-blue">{outperforming}</strong></div>
+    <div class="signal-kpi"><span>{lang("Freshness flags", "数据警报")}</span><strong class="data-amber">{stale}</strong></div>
+  </div>
+  <div class="distribution">
+    <div class="distribution-item"><span>{lang("Constructive", "强势")}</span><div class="distribution-track"><span style="width:{width(constructive)}"></span></div><strong>{constructive}</strong></div>
+    <div class="distribution-item neutral"><span>{lang("Neutral", "中性")}</span><div class="distribution-track"><span style="width:{width(neutral)}"></span></div><strong>{neutral}</strong></div>
+    <div class="distribution-item defensive"><span>{lang("Defensive", "防御")}</span><div class="distribution-track"><span style="width:{width(defensive)}"></span></div><strong>{defensive}</strong></div>
+  </div>
+</section>
+"""
+
+
 def _benchmarks_html(benchmarks: list[BenchmarkSnapshot]) -> str:
     if not benchmarks:
         return ""
@@ -323,6 +392,34 @@ def _benchmarks_html(benchmarks: list[BenchmarkSnapshot]) -> str:
   <p class="muted">{lang("SPY, QQQ, CSI 300, Hang Seng Index, and configured market benchmarks provide relative context for each symbol.", "SPY、QQQ、沪深300、恒生指数及配置中的市场基准，为单股强弱提供参照。")}</p>
   <table>
     <thead><tr><th>{lang("Benchmark", "基准")}</th><th>{lang("Name", "名称")}</th><th>{lang("Close", "收盘价")}</th><th>{lang("Change", "涨跌幅")}</th><th>20D</th><th>60D</th><th>{lang("Source", "数据源")}</th><th>{lang("Freshness", "新鲜度")}</th></tr></thead>
+    <tbody>{rows}</tbody>
+  </table>
+</section>
+"""
+
+
+def _themes_html(themes: list[ThemeSummary]) -> str:
+    if not themes:
+        return ""
+    rows = "".join(
+        "<tr>"
+        f"<td><strong>{html.escape(item.tag)}</strong><br><span class=\"muted\">{html.escape(', '.join(item.symbols))}</span></td>"
+        f"<td>{item.average_score:.1f}</td>"
+        f"<td>{html.escape(_num(item.weighted_score))}</td>"
+        f"<td class=\"{_value_class(item.return_20d)}\">{html.escape(_pct(item.return_20d))}</td>"
+        f"<td class=\"{_value_class(item.relative_return_20d)}\">{html.escape(_pct(item.relative_return_20d))}</td>"
+        f"<td class=\"{'risk-high' if item.high_risk_count else 'risk-low'}\">{item.high_risk_count}</td>"
+        f"<td>{html.escape(_currency_percentages(item.allocation_by_currency))}</td>"
+        f"<td>{html.escape(_currency_values(item.day_pnl_by_currency, signed=True))}</td>"
+        "</tr>"
+        for item in themes
+    )
+    return f"""
+<section class="brief">
+  <strong>{lang("Theme Research", "主题研究")}</strong>
+  <p class="muted">{lang("Tags become transparent research groups with equal-weight performance, benchmark strength, position-weighted scores, allocation, and risk pressure.", "标签会转化为透明的研究分组，展示等权表现、基准强弱、持仓加权评分、仓位与风险压力。")}</p>
+  <table>
+    <thead><tr><th>{lang("Theme / Symbols", "主题 / 标的")}</th><th>{lang("Avg score", "平均评分")}</th><th>{lang("Weighted", "持仓加权")}</th><th>20D</th><th>{lang("Rel 20D", "相对20日")}</th><th>{lang("High risk", "高风险")}</th><th>{lang("Allocation", "仓位")}</th><th>{lang("Day P/L", "当日盈亏")}</th></tr></thead>
     <tbody>{rows}</tbody>
   </table>
 </section>
@@ -395,43 +492,11 @@ def _insights_html(report: DailyReport) -> str:
 """
 
 
-def _summary_strip_html(report: DailyReport) -> str:
-    if not report.analyses:
-        return ""
-    rows = "".join(_summary_strip_row(item) for item in report.analyses)
-    heading = lang("At a Glance", "一览")
-    note = lang(
-        "Score, change, benchmark verdict, and risk for every tracked symbol in one scan.",
-        "一次扫描即可看到每个标的的评分、涨跌幅、基准对比结论与风险等级。",
-    )
-    return f'<h2>{heading}</h2><p class="section-note">{note}</p><section class="strip-grid">{rows}</section>'
-
-
-def _summary_strip_row(item: AssetAnalysis) -> str:
-    symbol = html.escape(item.asset.symbol)
-    change_class = _value_class(item.snapshot.change_pct)
-    score_class = _score_class(item.signal.score)
-    benchmark_badge = _verdict_badge(item.benchmark.verdict) if item.benchmark else ""
-    return f"""
-<div class="strip-row" data-symbol="{symbol}" data-risk="{html.escape(item.signal.risk_level)}">
-  <div class="strip-top">
-    <span class="strip-symbol">{symbol}</span>
-    <span class="strip-score {score_class}">{item.signal.score}</span>
-  </div>
-  <div class="{change_class}">{html.escape(_pct(item.snapshot.change_pct))}</div>
-  <div class="strip-meta">
-    {benchmark_badge}
-    <span class="pill risk-{html.escape(item.signal.risk_level)}">{lang("risk", "风险")} {html.escape(item.signal.risk_level)}</span>
-  </div>
-</div>
-"""
-
-
 def _html_card(item: AssetAnalysis, history: list[HistoryPoint]) -> str:
     reasons = "".join(f"<li>{html.escape(reason)}</li>" for reason in item.signal.reasons)
     warnings = "".join(f"<li>{html.escape(warning)}</li>" for warning in item.warnings)
     news = "".join(
-        f'<li><a href="{html.escape(_safe_href(news_item.link))}">{html.escape(news_item.title)}</a></li>'
+        f'<li><a href="{html.escape(news_item.link)}">{html.escape(news_item.title)}</a></li>'
         for news_item in item.news[:4]
     )
     ai = f"<p>{html.escape(item.ai_summary)}</p>" if item.ai_summary else ""
@@ -442,7 +507,7 @@ def _html_card(item: AssetAnalysis, history: list[HistoryPoint]) -> str:
     freshness = _freshness_html(item.freshness)
     sparkline = _sparkline(history)
     return f"""
-<article class="card asset-card">
+<article class="card asset-card" data-risk="{html.escape(item.signal.risk_level)}">
   <div class="top">
     <div>
       <div class="symbol">{html.escape(item.asset.symbol)}</div>
@@ -450,6 +515,7 @@ def _html_card(item: AssetAnalysis, history: list[HistoryPoint]) -> str:
     </div>
     <div class="score">{item.signal.score}</div>
   </div>
+  <div class="score-track" aria-label="Signal score {item.signal.score}"><span style="width:{max(0, min(item.signal.score, 100))}%"></span></div>
   <p><span class="pill">{html.escape(item.signal.stance)}</span> <span class="pill">{lang("risk", "风险")} {html.escape(item.signal.risk_level)}</span></p>
   <p class="muted">{lang("Data source", "数据源")}: {html.escape(item.snapshot.source or "n/a")}</p>
   <dl>
@@ -621,6 +687,19 @@ def _num(value: float | int | str | None) -> str:
         return str(value)
 
 
+def _currency_percentages(values: dict[str, float]) -> str:
+    if not values:
+        return "n/a"
+    return ", ".join(f"{currency} {_pct(value)}" for currency, value in values.items())
+
+
+def _currency_values(values: dict[str, float], signed: bool = False) -> str:
+    if not values:
+        return "n/a"
+    formatter = _signed_money if signed else _money
+    return ", ".join(formatter(value, currency) for currency, value in values.items())
+
+
 def _value_class(value: float | int | str | None) -> str:
     try:
         number = float(value)
@@ -633,36 +712,7 @@ def _value_class(value: float | int | str | None) -> str:
     return ""
 
 
-def _score_class(score: int) -> str:
-    if score >= 70:
-        return "gain"
-    if score >= 40:
-        return "risk-medium"
-    return "loss"
-
-
 def _trend_text(values: list[int]) -> str:
     if not values:
         return "n/a"
     return " -> ".join(str(value) for value in values[-6:])
-
-
-def _safe_href(url: str | None) -> str:
-    if url is None:
-        return "#"
-    if not re.match(r"^https?://", url, re.IGNORECASE):
-        return "#"
-    # A ")" , whitespace, or control character in the destination could close
-    # the Markdown "(...)" link syntax early and let the rest of the string
-    # inject a second, unescaped link (e.g. one using a javascript: URI).
-    if re.search(r"[)\s\x00-\x1f]", url):
-        return "#"
-    return url
-
-
-def _md_escape(text: object) -> str:
-    if text is None:
-        return ""
-    # Table rows must stay on one physical line, so a literal newline is just as
-    # corrupting to the row as an unescaped pipe would be.
-    return str(text).replace("|", "\\|").replace("\r\n", " ").replace("\n", " ").replace("\r", " ")

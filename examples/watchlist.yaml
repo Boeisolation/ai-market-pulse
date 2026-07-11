@@ -45,6 +45,14 @@ llm:
   cache_dir: "data/ai-cache"
   prompts_dir:
 
+alerts:
+  enabled: false
+  score_change: 10
+  daily_move: 0.05
+  relative_20d_drop: 0.05
+  risk_upgrade: true
+  stale_data: true
+
 assets:
   - symbol: "AAPL"
     name: "Apple"

@@ -20,28 +20,28 @@ def score_asset(metrics: dict[str, float | int | str | None]) -> SignalScore:
     atr_pct = _num(metrics.get("atr_pct"))
     volume_ratio = _num(metrics.get("volume_ratio_20d"))
 
-    if last is not None and sma20 is not None:
+    if last and sma20:
         if last > sma20:
             score += 8
             reasons.append("Price is above the 20-day average.")
         else:
             score -= 6
             reasons.append("Price is below the 20-day average.")
-    if last is not None and sma50 is not None:
+    if last and sma50:
         if last > sma50:
             score += 8
             reasons.append("Price is above the 50-day average.")
         else:
             score -= 7
             reasons.append("Price is below the 50-day average.")
-    if last is not None and sma200 is not None:
+    if last and sma200:
         if last > sma200:
             score += 5
             reasons.append("Long-term trend remains above the 200-day average.")
         else:
             score -= 8
             reasons.append("Long-term trend is below the 200-day average.")
-    if sma20 is not None and sma50 is not None:
+    if sma20 and sma50:
         if sma20 > sma50:
             score += 5
             reasons.append("Short trend is stronger than medium trend.")

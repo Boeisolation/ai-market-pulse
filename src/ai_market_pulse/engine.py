@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from .benchmarks import attach_benchmark_comparisons, build_data_freshness, fetch_benchmarks
 from .config import AppConfig
+from .group_stats import build_theme_summaries
 from .insights import build_insights
 from .indicators import calculate_indicators
 from .llm import summarize_portfolio_with_llm, summarize_with_llm
@@ -25,7 +26,6 @@ def run_analysis(config: AppConfig, config_path: str | None = None) -> DailyRepo
                 asset,
                 config.analysis.lookback_days,
                 config.data.providers,
-                as_of=generated_at.date(),
             )
             metrics = calculate_indicators(history)
             freshness = build_data_freshness(snapshot, generated_at.date(), config.benchmarks.stale_after_days)
@@ -70,6 +70,7 @@ def run_analysis(config: AppConfig, config_path: str | None = None) -> DailyRepo
         analyses=analyses,
         market_brief=_market_brief(analyses),
         portfolio=portfolio,
+        themes=build_theme_summaries(analyses),
         insights=build_insights(analyses),
         benchmarks=benchmark_snapshots,
         config_path=config_path,

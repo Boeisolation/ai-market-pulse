@@ -4,8 +4,7 @@ import importlib.util
 import os
 from dataclasses import dataclass
 
-from . import notify
-from .config import AppConfig, NotificationTarget
+from .config import AppConfig
 from .market_data import provider_can_handle, supported_providers
 from .models import Asset
 
@@ -37,10 +36,6 @@ def run_doctor(config: AppConfig) -> list[DoctorCheck]:
             detail = ", ".join(capable) if capable else "No configured provider can handle this benchmark."
             checks.append(DoctorCheck(f"benchmark:{asset.symbol}", status, detail))
     checks.append(_llm_check(config))
-    for target in config.notifications:
-        check = _notification_check(target)
-        if check is not None:
-            checks.append(check)
     return checks
 
 
@@ -85,61 +80,6 @@ def _llm_check(config: AppConfig) -> DoctorCheck:
     if not config.llm.model:
         return DoctorCheck("llm", "warn", "Enabled, but model is empty.")
     return DoctorCheck("llm", "ok", f"Configured for model {config.llm.model}.")
-
-
-_URL_BASED_NOTIFICATION_TYPES = {"feishu", "webhook", "slack", "discord", "wecom"}
-
-
-def _notification_check(target: NotificationTarget) -> DoctorCheck | None:
-    if not target.enabled:
-        return None
-    kind = target.type.lower()
-    check_name = f"notification:{target.name or target.type}"
-    if kind == "telegram":
-        return _telegram_notification_check(check_name, target.settings)
-    if kind in _URL_BASED_NOTIFICATION_TYPES:
-        return _url_notification_check(check_name, kind, target.settings)
-    if kind == "email":
-        return _email_notification_check(check_name, target.settings)
-    return None
-
-
-def _telegram_notification_check(check_name: str, settings: dict) -> DoctorCheck:
-    token = notify.resolve_setting(settings, "token", "token_env")
-    if not token:
-        return DoctorCheck(check_name, "fail", _missing_var_detail(settings, "token", "token_env"))
-    chat_id = notify.resolve_setting(settings, "chat_id", "chat_id_env")
-    if not chat_id:
-        return DoctorCheck(check_name, "fail", _missing_var_detail(settings, "chat_id", "chat_id_env"))
-    return DoctorCheck(check_name, "ok", "Telegram token and chat_id are configured.")
-
-
-def _url_notification_check(check_name: str, kind: str, settings: dict) -> DoctorCheck:
-    url = notify.resolve_setting(settings, "url", "url_env")
-    if not url:
-        return DoctorCheck(check_name, "fail", _missing_var_detail(settings, "url", "url_env"))
-    if not url.startswith("https://"):
-        return DoctorCheck(check_name, "fail", f"{kind} url must use https://, got: {url!r}")
-    return DoctorCheck(check_name, "ok", f"{kind} url is configured with a secure scheme.")
-
-
-def _email_notification_check(check_name: str, settings: dict) -> DoctorCheck:
-    required = [
-        ("smtp_host", "smtp_host_env"),
-        ("sender", "sender_env"),
-        ("to", "to_env"),
-    ]
-    for literal_key, env_key in required:
-        if not notify.resolve_setting(settings, literal_key, env_key):
-            return DoctorCheck(check_name, "fail", _missing_var_detail(settings, literal_key, env_key))
-    return DoctorCheck(check_name, "ok", "Email smtp_host, sender, and to are configured.")
-
-
-def _missing_var_detail(settings: dict, literal_key: str, env_key: str) -> str:
-    env_name = settings.get(env_key)
-    if env_name:
-        return f"{env_key} is set to {env_name!r}, but env var {env_name} is not set (or empty)."
-    return f"Missing {literal_key} (or {env_key} pointing to an env var)."
 
 
 def _benchmark_assets(config: AppConfig) -> list[Asset]:

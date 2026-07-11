@@ -11,15 +11,10 @@ reports/*.html
 reports/*.md
 reports/*.json
 data/*.jsonl
+data/alert-state.json
+data/console-watchlist.yaml
+data/*.lock
 data/ai-cache/
 site/
 demo/
 .env
-.coverage
-.claude/settings.local.json
-.claude/scheduled_tasks.lock
-.claude/launch.json
-
-# Internal handoff notes — not for public release (contains another
-# collaborator's local machine path and pre-release task checklists).
-XF1_HANDOFF.md

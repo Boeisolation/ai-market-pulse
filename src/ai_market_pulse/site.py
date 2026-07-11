@@ -89,17 +89,15 @@ def render_site_index(
   {language_boot_script("en")}
   <style>
     {ui_styles()}
-    .site-hero {{ padding-bottom: 36px; }}
-    .data-visual {{ display: grid; gap: 10px; }}
-    .visual-row {{ display: grid; grid-template-columns: 70px 1fr 42px; gap: 10px; align-items: center; color: #d9e5df; font-size: 12px; }}
-    .bar {{ height: 8px; border-radius: 999px; background: rgba(255,255,255,0.12); overflow: hidden; }}
-    .bar span {{ display: block; height: 100%; border-radius: inherit; background: var(--brand); }}
-    .bar.amber span {{ background: var(--amber); }}
-    .bar.indigo span {{ background: var(--indigo); }}
+    .site-hero {{ padding-bottom: 28px; }}
+    .site-hero h1 {{ font-size: 40px; }}
+    .site-meta {{ margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }}
+    .site-meta dt {{ color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }}
+    .site-meta dd {{ margin: 5px 0 0; color: var(--ink); font-size: 14px; font-weight: 760; }}
     .grid.primary-links {{ margin-top: 6px; }}
-    .card {{ min-height: 156px; display: flex; flex-direction: column; justify-content: space-between; }}
+    .card {{ min-height: 156px; display: flex; flex-direction: column; justify-content: space-between; border-top: 2px solid var(--brand); }}
     .card h3 {{ color: var(--muted); }}
-    .card strong {{ display: block; margin: 10px 0; font-size: clamp(23px, 3vw, 30px); line-height: 1.12; }}
+    .card strong {{ display: block; margin: 10px 0; font-size: 26px; line-height: 1.12; }}
     .actions {{ margin-top: 14px; }}
     .empty {{ padding: 18px; background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; }}
     footer {{ margin-top: 30px; color: var(--muted); font-size: 13px; }}
@@ -118,10 +116,12 @@ def render_site_index(
       <p>{lang("Daily AI-assisted quant research, signal review, portfolio risk monitoring, and static publishing. No server required.", "每日 AI 辅助量化研究、信号复盘、组合风控与静态发布。无需服务器。")}</p>
       <p class="fineprint">{lang("Updated", "更新时间")}: {html.escape(generated)}</p>
     </div>
-    <aside class="hero-panel data-visual" aria-label="Signal visual">
-      <div class="visual-row"><span>{lang("Risk", "风险")}</span><div class="bar"><span style="width: 68%"></span></div><strong>{len(reports)}</strong></div>
-      <div class="visual-row"><span>{lang("Pulse", "脉搏")}</span><div class="bar amber"><span style="width: 46%"></span></div><strong>AI</strong></div>
-      <div class="visual-row"><span>{lang("Review", "复盘")}</span><div class="bar indigo"><span style="width: 82%"></span></div><strong>JSONL</strong></div>
+    <aside class="hero-panel" aria-label="Site status">
+      <dl class="site-meta">
+        <div><dt>{lang("Reports", "报告")}</dt><dd>{len(reports)}</dd></div>
+        <div><dt>{lang("Publishing", "发布")}</dt><dd>Static</dd></div>
+        <div><dt>{lang("Runtime", "运行")}</dt><dd>No server</dd></div>
+      </dl>
     </aside>
   </header>
   <section class="grid primary-links" aria-label="Primary links">
