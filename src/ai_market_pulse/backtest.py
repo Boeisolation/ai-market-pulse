@@ -112,7 +112,7 @@ def run_backtest(
 def format_backtest(result: BacktestResult) -> str:
     lines = [
         f"Backtest: {result.samples} samples, {result.horizon_days}-day forward return, step {result.step_days}.",
-        f"Score/forward-return correlation: "
+        "Score/forward-return correlation: "
         + (f"{result.correlation:+.3f}" if result.correlation is not None else "n/a"),
         "",
         f"{'Score bucket':<14}{'Samples':>9}{'Avg fwd return':>17}{'Win rate':>11}",

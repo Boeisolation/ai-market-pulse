@@ -63,6 +63,34 @@ def test_append_history_is_safe_under_concurrent_writers(tmp_path: Path) -> None
     assert len(matching) == 1
 
 
+def test_append_history_appends_without_rewrite_when_no_collision(tmp_path: Path) -> None:
+    history_path = tmp_path / "history.jsonl"
+    sentinel = '{"not": "a history point"}'
+    old_row = {
+        "date": "2026-07-07",
+        "symbol": "AAPL",
+        "close": 190.0,
+        "score": 50,
+        "stance": "neutral",
+        "risk_level": "low",
+    }
+    history_path.write_text(sentinel + "\n" + json.dumps(old_row) + "\n", encoding="utf-8")
+
+    append_history(history_path, _report(score=60))  # new date -> append path
+
+    content = history_path.read_text(encoding="utf-8")
+    assert sentinel in content  # file was appended to, not rewritten
+    assert len(load_history(history_path)) == 2
+
+    append_history(history_path, _report(score=61))  # same date -> rewrite path
+    content = history_path.read_text(encoding="utf-8")
+    assert sentinel not in content  # collision triggered the dedupe rewrite
+    records = load_history(history_path)
+    assert len(records) == 2
+    latest = next(record for record in records if record.date == "2026-07-08")
+    assert latest.score == 61
+
+
 def _report(score: int) -> DailyReport:
     analysis = AssetAnalysis(
         asset=Asset(symbol="AAPL", name="Apple"),

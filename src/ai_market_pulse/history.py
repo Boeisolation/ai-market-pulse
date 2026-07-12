@@ -52,15 +52,26 @@ def append_history(path: str | Path, report: DailyReport) -> None:
     history_path = Path(path)
     history_path.parent.mkdir(parents=True, exist_ok=True)
     with _history_lock(history_path):
-        merged = load_history(history_path) + records_from_report(report)
-        by_key = {(record.symbol, record.date): record for record in merged}
+        new_records = records_from_report(report)
+        existing = load_history(history_path)
+        existing_keys = {(record.symbol, record.date) for record in existing}
+        collisions = any((record.symbol, record.date) in existing_keys for record in new_records)
+        if not collisions:
+            # Common daily case: no same-day rerun, so appending avoids
+            # rewriting a file that only grows. Readers sort and dedupe.
+            with history_path.open("a", encoding="utf-8") as handle:
+                handle.write(_dump_records(new_records))
+            return
+        # Same-day rerun: replace colliding rows via a full dedupe rewrite.
+        by_key = {(record.symbol, record.date): record for record in existing + new_records}
         ordered = sorted(by_key.values(), key=lambda record: (record.date, record.symbol))
         temporary = history_path.with_suffix(history_path.suffix + ".tmp")
-        temporary.write_text(
-            "".join(json.dumps(record.__dict__, ensure_ascii=False, sort_keys=True) + "\n" for record in ordered),
-            encoding="utf-8",
-        )
+        temporary.write_text(_dump_records(ordered), encoding="utf-8")
         temporary.replace(history_path)
+
+
+def _dump_records(records: list[HistoryPoint]) -> str:
+    return "".join(json.dumps(record.__dict__, ensure_ascii=False, sort_keys=True) + "\n" for record in records)
 
 
 def records_from_report(report: DailyReport) -> list[HistoryPoint]:
