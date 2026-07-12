@@ -89,6 +89,17 @@ def main(argv: list[str] | None = None) -> None:
     doctor_parser = subparsers.add_parser("doctor", help="Check config, providers, and optional integrations.")
     doctor_parser.add_argument("--config", default="watchlist.yaml", help="Path to watchlist config.")
 
+    backtest_parser = subparsers.add_parser(
+        "backtest",
+        help="Validate the signal score against realized forward returns (research diagnostic).",
+    )
+    backtest_parser.add_argument("--config", default="watchlist.yaml", help="Path to watchlist config.")
+    backtest_parser.add_argument("--symbols", default=None, help="Comma/space separated symbols instead of a config file.")
+    backtest_parser.add_argument("--providers", default=None, help="Comma/space separated providers when using --symbols.")
+    backtest_parser.add_argument("--history-days", type=int, default=500, help="Trading days of history to evaluate.")
+    backtest_parser.add_argument("--horizon", type=int, default=20, help="Forward-return horizon in trading days.")
+    backtest_parser.add_argument("--step", type=int, default=5, help="Sampling stride in trading days.")
+
     args = parser.parse_args(argv)
     if args.command == "init":
         _init_config(
@@ -132,6 +143,15 @@ def main(argv: list[str] | None = None) -> None:
         _demo(Path(args.output), args.title)
     elif args.command == "doctor":
         _doctor(Path(args.config))
+    elif args.command == "backtest":
+        _backtest(
+            Path(args.config),
+            args.symbols,
+            args.providers,
+            args.history_days,
+            args.horizon,
+            args.step,
+        )
 
 
 def _init_config(
@@ -290,6 +310,33 @@ def _site(reports_dir: Path, output_dir: Path, title: str, keep_reports: int) ->
 def _doctor(config_path: Path) -> None:
     config = load_config(config_path)
     print(format_doctor(run_doctor(config)))
+
+
+def _backtest(
+    config_path: Path,
+    symbols: str | None,
+    providers: str | None,
+    history_days: int,
+    horizon: int,
+    step: int,
+) -> None:
+    from .backtest import format_backtest, run_backtest
+    from .engine import _build_cache
+    from .market_data import MarketDataError, fetch_history
+
+    config, _ = _load_run_config(config_path, symbols, "Backtest", "UTC", "en", providers)
+    cache = _build_cache(config.data)
+    histories: dict[str, "object"] = {}
+    for asset in config.assets:
+        try:
+            _, _, history = fetch_history(asset, history_days, config.data.providers, cache=cache)
+            histories[asset.symbol] = history
+        except MarketDataError as exc:
+            print(f"Skipping {asset.symbol}: {exc}")
+    if not histories:
+        raise SystemExit("No history available for any symbol; cannot backtest.")
+    result = run_backtest(histories, horizon_days=horizon, step_days=step, weights=config.scoring)
+    print(format_backtest(result))
 
 
 def _demo(output_dir: Path, title: str) -> None:

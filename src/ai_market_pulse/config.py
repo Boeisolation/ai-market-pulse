@@ -80,6 +80,36 @@ class BenchmarkSettings:
 
 
 @dataclass(frozen=True)
+class ScoringSettings:
+    """Point weights applied by score_asset. Defaults reproduce the original
+    hardcoded model, so omitting the `scoring` config section changes nothing."""
+
+    sma20_above: int = 8
+    sma20_below: int = 6
+    sma50_above: int = 8
+    sma50_below: int = 7
+    sma200_above: int = 5
+    sma200_below: int = 8
+    trend_alignment: int = 5
+    trend_misalignment: int = 4
+    rsi_balanced: int = 6
+    rsi_soft: int = 1
+    rsi_oversold: int = 3
+    rsi_strong: int = 2
+    rsi_overheated: int = 7
+    macd_above: int = 5
+    macd_below: int = 4
+    ret20_strong: int = 5
+    ret20_weak: int = 6
+    ret60_strong: int = 4
+    ret60_weak: int = 5
+    drawdown_large: int = 8
+    drawdown_medium: int = 4
+    atr_elevated: int = 4
+    volume_confirmation: int = 3
+
+
+@dataclass(frozen=True)
 class AlertSettings:
     enabled: bool = False
     score_change: int = 10
@@ -107,6 +137,7 @@ class AppConfig:
     benchmarks: BenchmarkSettings = field(default_factory=BenchmarkSettings)
     news: NewsSettings = field(default_factory=NewsSettings)
     llm: LLMSettings = field(default_factory=LLMSettings)
+    scoring: ScoringSettings = field(default_factory=ScoringSettings)
     alerts: AlertSettings = field(default_factory=AlertSettings)
     notifications: list[NotificationTarget] = field(default_factory=list)
 
@@ -129,6 +160,7 @@ def load_config_from_mapping(raw: dict[str, Any]) -> AppConfig:
     benchmarks_raw = raw.get("benchmarks", {}) or {}
     news_raw = raw.get("news", {}) or {}
     llm_raw = raw.get("llm", {}) or {}
+    scoring_raw = raw.get("scoring", {}) or {}
     alerts_raw = raw.get("alerts", {}) or {}
 
     return AppConfig(
@@ -140,6 +172,7 @@ def load_config_from_mapping(raw: dict[str, Any]) -> AppConfig:
         benchmarks=BenchmarkSettings(**_filter_dataclass(BenchmarkSettings, benchmarks_raw)),
         news=NewsSettings(**_filter_dataclass(NewsSettings, news_raw)),
         llm=LLMSettings(**_filter_dataclass(LLMSettings, llm_raw)),
+        scoring=ScoringSettings(**_filter_dataclass(ScoringSettings, scoring_raw)),
         alerts=AlertSettings(**_filter_dataclass(AlertSettings, alerts_raw)),
         notifications=[
             NotificationTarget(

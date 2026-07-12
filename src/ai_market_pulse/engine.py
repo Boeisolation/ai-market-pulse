@@ -35,7 +35,7 @@ def run_analysis(config: AppConfig, config_path: str | None = None) -> DailyRepo
             metrics = calculate_indicators(history)
             freshness = build_data_freshness(snapshot, generated_at.date(), config.benchmarks.stale_after_days)
             warnings = _warnings(snapshot, config.analysis.min_history_rows, freshness)
-            signal = score_asset(metrics)
+            signal = score_asset(metrics, config.scoring)
             news = fetch_news(hydrated_asset, config.news)
             return AssetAnalysis(
                 asset=hydrated_asset,

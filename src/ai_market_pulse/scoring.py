@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from .config import ScoringSettings
 from .models import SignalScore
 
 
-def score_asset(metrics: dict[str, float | int | str | None]) -> SignalScore:
+def score_asset(
+    metrics: dict[str, float | int | str | None],
+    weights: ScoringSettings | None = None,
+) -> SignalScore:
+    w = weights or ScoringSettings()
     score = 50
     reasons: list[str] = []
 
@@ -22,81 +27,81 @@ def score_asset(metrics: dict[str, float | int | str | None]) -> SignalScore:
 
     if last and sma20:
         if last > sma20:
-            score += 8
+            score += w.sma20_above
             reasons.append("Price is above the 20-day average.")
         else:
-            score -= 6
+            score -= w.sma20_below
             reasons.append("Price is below the 20-day average.")
     if last and sma50:
         if last > sma50:
-            score += 8
+            score += w.sma50_above
             reasons.append("Price is above the 50-day average.")
         else:
-            score -= 7
+            score -= w.sma50_below
             reasons.append("Price is below the 50-day average.")
     if last and sma200:
         if last > sma200:
-            score += 5
+            score += w.sma200_above
             reasons.append("Long-term trend remains above the 200-day average.")
         else:
-            score -= 8
+            score -= w.sma200_below
             reasons.append("Long-term trend is below the 200-day average.")
     if sma20 and sma50:
         if sma20 > sma50:
-            score += 5
+            score += w.trend_alignment
             reasons.append("Short trend is stronger than medium trend.")
         else:
-            score -= 4
+            score -= w.trend_misalignment
             reasons.append("Short trend is weaker than medium trend.")
     if rsi is not None:
         if 45 <= rsi <= 65:
-            score += 6
+            score += w.rsi_balanced
             reasons.append("RSI is in a balanced momentum zone.")
         elif 30 <= rsi < 45:
-            score += 1
+            score += w.rsi_soft
             reasons.append("RSI is soft but not deeply oversold.")
         elif rsi < 30:
-            score -= 3
+            score -= w.rsi_oversold
             reasons.append("RSI is oversold; rebound risk and trend weakness coexist.")
         elif 65 < rsi <= 75:
-            score += 2
+            score += w.rsi_strong
             reasons.append("RSI shows strong momentum but needs overheating checks.")
         else:
-            score -= 7
+            score -= w.rsi_overheated
             reasons.append("RSI is overheated.")
     if macd is not None and macd_signal is not None:
         if macd > macd_signal:
-            score += 5
+            score += w.macd_above
             reasons.append("MACD is above signal line.")
         else:
-            score -= 4
+            score -= w.macd_below
             reasons.append("MACD is below signal line.")
     if ret20 is not None:
         if ret20 > 0.05:
-            score += 5
+            score += w.ret20_strong
             reasons.append("20-day return is strongly positive.")
         elif ret20 < -0.05:
-            score -= 6
+            score -= w.ret20_weak
             reasons.append("20-day return is meaningfully negative.")
     if ret60 is not None:
         if ret60 > 0.08:
-            score += 4
+            score += w.ret60_strong
             reasons.append("60-day return confirms medium-term strength.")
         elif ret60 < -0.08:
-            score -= 5
+            score -= w.ret60_weak
             reasons.append("60-day return confirms medium-term weakness.")
     if drawdown is not None:
         if drawdown < -0.18:
-            score -= 8
+            score -= w.drawdown_large
             reasons.append("Recent drawdown is large.")
         elif drawdown < -0.10:
-            score -= 4
+            score -= w.drawdown_medium
             reasons.append("Recent drawdown deserves risk control.")
     if atr_pct is not None and atr_pct > 0.045:
-        score -= 4
+        score -= w.atr_elevated
         reasons.append("ATR implies elevated daily price range.")
     if volume_ratio is not None and volume_ratio > 1.5 and ret20 is not None and ret20 > 0:
-        score += 3
+        score += w.volume_confirmation
         reasons.append("Volume expansion supports recent strength.")
 
     clipped = max(0, min(100, round(score)))
