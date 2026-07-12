@@ -106,6 +106,11 @@ def fetch_history(
             return hydrated, snapshot, history
         except MarketDataError as exc:
             errors.append(f"{provider_name}: {exc}")
+        except Exception as exc:
+            # Network stacks raise far more than MarketDataError (TLS errors,
+            # DNS failures, provider bugs). Degrade to the next provider or the
+            # stale cache instead of killing the whole run.
+            errors.append(f"{provider_name}: unexpected {type(exc).__name__}: {exc}")
 
     if cached is not None:
         logger.warning(

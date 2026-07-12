@@ -48,6 +48,9 @@ def run_analysis(config: AppConfig, config_path: str | None = None) -> DailyRepo
             )
         except MarketDataError as exc:
             return _failed_analysis(asset, str(exc))
+        except Exception as exc:
+            # One asset's unexpected failure must not take down the report.
+            return _failed_analysis(asset, f"Unexpected {type(exc).__name__}: {exc}")
 
     # Per-asset work is dominated by network I/O (quotes + news), so a thread
     # pool gives near-linear speedup. executor.map preserves input order.
