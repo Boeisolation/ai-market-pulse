@@ -32,6 +32,33 @@ def test_calculate_indicators_has_core_fields() -> None:
     assert metrics["resistance_20d"] is not None
 
 
+def test_rsi_uses_wilder_smoothing() -> None:
+    # Alternating gains/losses of different sizes: Wilder and Cutler diverge here.
+    closes = [100.0]
+    for index in range(60):
+        closes.append(closes[-1] + (2.0 if index % 2 == 0 else -1.0))
+    rows = [
+        {
+            "Date": pd.Timestamp("2026-01-01") + pd.Timedelta(days=index),
+            "Open": value,
+            "High": value + 1,
+            "Low": value - 1,
+            "Close": value,
+            "Volume": 1000,
+        }
+        for index, value in enumerate(closes)
+    ]
+    metrics = calculate_indicators(pd.DataFrame(rows))
+
+    series = pd.Series(closes)
+    delta = series.diff()
+    gain = delta.clip(lower=0).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    expected = float((100 - 100 / (1 + gain / loss)).iloc[-1])
+
+    assert metrics["rsi14"] == round(expected, 6)
+
+
 def test_score_asset_returns_bounded_score() -> None:
     metrics = {
         "last_close": 120,

@@ -21,9 +21,12 @@ def calculate_indicators(history: pd.DataFrame) -> dict[str, float | int | str |
     macd = ema12 - ema26
     macd_signal = macd.ewm(span=9, adjust=False).mean()
 
+    # Wilder smoothing (ewm alpha=1/14) matches the standard RSI/ATR published
+    # by TradingView and brokers; a plain rolling mean is Cutler's variant and
+    # drifts several points away from it.
     delta = close.diff()
-    gain = delta.clip(lower=0).rolling(14).mean()
-    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    gain = delta.clip(lower=0).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
     rs = gain / loss.replace(0, math.nan)
     rsi = 100 - (100 / (1 + rs))
     rsi = rsi.mask((loss == 0) & (gain > 0), 100)
@@ -43,7 +46,7 @@ def calculate_indicators(history: pd.DataFrame) -> dict[str, float | int | str |
         ],
         axis=1,
     ).max(axis=1)
-    atr14 = true_range.rolling(14).mean()
+    atr14 = true_range.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
 
     last_close = _last(close)
     support_20 = _last(low.rolling(20).min())
