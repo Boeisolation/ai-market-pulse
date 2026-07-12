@@ -3,13 +3,21 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
+import time
 from pathlib import Path
+import urllib.error
 import urllib.request
 from typing import Any
 
 from .config import LLMSettings
 from .models import AssetAnalysis, DailyReport
+
+logger = logging.getLogger(__name__)
+
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+_MAX_ATTEMPTS = 3
 
 
 def summarize_with_llm(analysis: AssetAnalysis, settings: LLMSettings, language: str) -> str | None:
@@ -141,25 +149,48 @@ def _chat_completion(messages: list[dict[str, Any]], settings: LLMSettings) -> s
     if cached is not None:
         return cached
     body = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        settings.base_url.rstrip("/") + "/chat/completions",
-        data=body,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "User-Agent": "ai-market-pulse/0.1",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=settings.timeout_seconds) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except Exception:
+    url = settings.base_url.rstrip("/") + "/chat/completions"
+
+    result: dict[str, Any] | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        request = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "ai-market-pulse/0.1",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=settings.timeout_seconds) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            if exc.code in _RETRYABLE_STATUS and attempt < _MAX_ATTEMPTS:
+                delay = 2 ** (attempt - 1)
+                logger.warning("LLM request got HTTP %s; retrying in %ss (attempt %s/%s).", exc.code, delay, attempt, _MAX_ATTEMPTS)
+                time.sleep(delay)
+                continue
+            logger.warning("LLM request failed: HTTP %s from %s. Check the API key, model, and quota.", exc.code, url)
+            return None
+        except Exception as exc:
+            if attempt < _MAX_ATTEMPTS:
+                delay = 2 ** (attempt - 1)
+                logger.warning("LLM request error (%s); retrying in %ss (attempt %s/%s).", exc, delay, attempt, _MAX_ATTEMPTS)
+                time.sleep(delay)
+                continue
+            logger.warning("LLM request failed after %s attempts: %s", _MAX_ATTEMPTS, exc)
+            return None
+    if result is None:
         return None
 
     content = _extract_message(result)
     if content:
         _write_cache(payload, settings, content)
+    else:
+        logger.warning("LLM response from %s contained no message content.", url)
     return content
 
 

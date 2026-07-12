@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -23,6 +24,7 @@ from .web import run_console
 
 
 def main(argv: list[str] | None = None) -> None:
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(
         prog="market-pulse",
         description="Generate AI-enhanced daily market analysis reports and notifications.",
