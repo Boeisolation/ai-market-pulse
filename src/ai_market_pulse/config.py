@@ -47,6 +47,10 @@ class AnalysisSettings:
 @dataclass(frozen=True)
 class DataSettings:
     providers: list[str] = field(default_factory=lambda: ["akshare", "yfinance"])
+    cache_enabled: bool = True
+    cache_dir: str = "data/market-cache"
+    cache_ttl_minutes: int = 30
+    max_workers: int = 8
 
 
 @dataclass(frozen=True)

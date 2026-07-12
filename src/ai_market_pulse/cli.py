@@ -60,6 +60,7 @@ def main(argv: list[str] | None = None) -> None:
     run_parser.add_argument("--no-notify", action="store_true", help="Skip configured notifications.")
     run_parser.add_argument("--no-ai", action="store_true", help="Disable AI summaries for this run.")
     run_parser.add_argument("--ai-only", action="store_true", help="Generate AI summaries without history append or notifications.")
+    run_parser.add_argument("--no-cache", action="store_true", help="Bypass the local market-data cache for this run.")
 
     alert_parser = subparsers.add_parser("alert-check", help="Run a lightweight change check and notify on new threshold events.")
     alert_parser.add_argument("--config", default="watchlist.yaml", help="Path to watchlist config.")
@@ -117,6 +118,7 @@ def main(argv: list[str] | None = None) -> None:
             args.timezone,
             args.language,
             args.providers,
+            args.no_cache,
         )
     elif args.command == "dashboard":
         _dashboard(Path(args.history), Path(args.output))
@@ -191,12 +193,15 @@ def _run(
     timezone: str = "America/Los_Angeles",
     language: str = "zh-CN",
     providers: str | None = None,
+    no_cache: bool = False,
 ) -> None:
     config, config_label = _load_run_config(config_path, symbols, title, timezone, language, providers)
     if no_ai and ai_only:
         raise SystemExit("--no-ai and --ai-only cannot be used together.")
     if no_ai:
         config = replace(config, llm=replace(config.llm, enabled=False))
+    if no_cache:
+        config = replace(config, data=replace(config.data, cache_enabled=False))
     if ai_only:
         if not config.llm.enabled:
             raise SystemExit("--ai-only requires llm.enabled: true in config.")

@@ -44,7 +44,7 @@ def _config(assets: list[Asset]) -> AppConfig:
 
 
 def test_run_analysis_builds_report_with_position(monkeypatch) -> None:
-    def fake_fetch_history(asset, lookback_days, providers):
+    def fake_fetch_history(asset, lookback_days, providers, **kwargs):
         frame = _fake_history_df()
         snapshot = PriceSnapshot(
             symbol=asset.symbol,
@@ -76,8 +76,39 @@ def test_run_analysis_builds_report_with_position(monkeypatch) -> None:
     assert "analyzed" in report.market_brief
 
 
+def test_run_analysis_preserves_asset_order_with_concurrency(monkeypatch) -> None:
+    import time
+
+    def fake_fetch_history(asset, lookback_days, providers, **kwargs):
+        # Make earlier assets slower to catch ordering bugs in the pool.
+        time.sleep(0.05 if asset.symbol == "AAA" else 0.0)
+        frame = _fake_history_df()
+        snapshot = PriceSnapshot(
+            symbol=asset.symbol,
+            name=asset.symbol,
+            currency="USD",
+            last_close=210.0,
+            previous_close=209.0,
+            change_pct=0.0047,
+            start_date="2024-01-01",
+            end_date="2026-07-08",
+            rows=len(frame),
+            source="fake",
+        )
+        return asset, snapshot, frame
+
+    monkeypatch.setattr(engine, "fetch_history", fake_fetch_history)
+    monkeypatch.setattr(engine, "fetch_news", lambda asset, settings: [])
+    monkeypatch.setattr(engine, "fetch_benchmarks", lambda *args, **kwargs: ({}, []))
+
+    config = _config([Asset(symbol="AAA"), Asset(symbol="BBB"), Asset(symbol="CCC")])
+    report = engine.run_analysis(config, "test")
+
+    assert [analysis.asset.symbol for analysis in report.analyses] == ["AAA", "BBB", "CCC"]
+
+
 def test_run_analysis_handles_failed_fetch(monkeypatch) -> None:
-    def boom(asset, lookback_days, providers):
+    def boom(asset, lookback_days, providers, **kwargs):
         raise MarketDataError("no data")
 
     monkeypatch.setattr(engine, "fetch_history", boom)

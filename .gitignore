@@ -18,3 +18,4 @@ data/ai-cache/
 site/
 demo/
 .env
+data/market-cache/

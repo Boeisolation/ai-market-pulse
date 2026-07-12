@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import date
 
 from .config import BenchmarkSettings
 from .indicators import calculate_indicators
+from .market_cache import MarketDataCache
 from .market_data import MarketDataError, fetch_history
 from .models import Asset, AssetAnalysis, BenchmarkComparison, BenchmarkSnapshot, DataFreshness, PriceSnapshot
 
@@ -23,16 +25,21 @@ def fetch_benchmarks(
     providers: list[str],
     lookback_days: int,
     today: date,
+    *,
+    cache: MarketDataCache | None = None,
+    max_workers: int = 4,
 ) -> tuple[dict[str, BenchmarkData], list[BenchmarkSnapshot]]:
     if not settings.enabled:
         return {}, []
 
-    data: dict[str, BenchmarkData] = {}
-    snapshots: list[BenchmarkSnapshot] = []
-    for asset in _benchmark_assets(assets, settings):
+    benchmark_assets = _benchmark_assets(assets, settings)
+    if not benchmark_assets:
+        return {}, []
+
+    def fetch_one(asset: Asset) -> tuple[str, BenchmarkData | None, BenchmarkSnapshot]:
         key = _symbol_key(asset.symbol)
         try:
-            hydrated_asset, snapshot, history = fetch_history(asset, lookback_days, providers)
+            hydrated_asset, snapshot, history = fetch_history(asset, lookback_days, providers, cache=cache)
             metrics = calculate_indicators(history)
             freshness = build_data_freshness(snapshot, today, settings.stale_after_days)
             benchmark_data = BenchmarkData(
@@ -41,8 +48,7 @@ def fetch_benchmarks(
                 metrics=metrics,
                 freshness=freshness,
             )
-            data[key] = benchmark_data
-            snapshots.append(_snapshot_from_data(benchmark_data))
+            return key, benchmark_data, _snapshot_from_data(benchmark_data)
         except MarketDataError as exc:
             freshness = DataFreshness(
                 latest_date="",
@@ -52,20 +58,29 @@ def fetch_benchmarks(
                 status="missing",
                 message=f"Benchmark unavailable: {exc}",
             )
-            snapshots.append(
-                BenchmarkSnapshot(
-                    symbol=asset.symbol,
-                    name=asset.name or asset.symbol,
-                    market=asset.market,
-                    currency=asset.currency,
-                    last_close=None,
-                    change_pct=None,
-                    return_20d=None,
-                    return_60d=None,
-                    source=None,
-                    freshness=freshness,
-                )
+            return key, None, BenchmarkSnapshot(
+                symbol=asset.symbol,
+                name=asset.name or asset.symbol,
+                market=asset.market,
+                currency=asset.currency,
+                last_close=None,
+                change_pct=None,
+                return_20d=None,
+                return_60d=None,
+                source=None,
+                freshness=freshness,
             )
+
+    workers = max(1, min(max_workers, len(benchmark_assets)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(fetch_one, benchmark_assets))
+
+    data: dict[str, BenchmarkData] = {}
+    snapshots: list[BenchmarkSnapshot] = []
+    for key, benchmark_data, snapshot in results:
+        if benchmark_data is not None:
+            data[key] = benchmark_data
+        snapshots.append(snapshot)
     return data, snapshots
 
 

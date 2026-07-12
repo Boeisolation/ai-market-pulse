@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import threading
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Callable
@@ -7,7 +9,10 @@ import os
 
 import pandas as pd
 
+from .market_cache import CachedHistory, MarketDataCache
 from .models import Asset, PriceSnapshot
+
+logger = logging.getLogger(__name__)
 
 
 class MarketDataError(RuntimeError):
@@ -15,6 +20,14 @@ class MarketDataError(RuntimeError):
 
 
 Provider = Callable[[Asset, int], tuple[Asset, PriceSnapshot, pd.DataFrame]]
+IncrementalProvider = Callable[[Asset, date], pd.DataFrame]
+
+# Overlap window re-fetched on incremental updates so late data revisions heal.
+_INCREMENTAL_OVERLAP_DAYS = 7
+
+# baostock keeps login state in module-level globals, so concurrent fetches
+# must serialize around login/logout.
+_BAOSTOCK_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -24,6 +37,7 @@ class ProviderSpec:
     can_handle: Callable[[Asset], bool]
     aliases: tuple[str, ...] = ()
     markets: tuple[str, ...] = ()
+    fetch_since: IncrementalProvider | None = None
 
 
 _PROVIDERS: dict[str, ProviderSpec] = {}
@@ -51,8 +65,15 @@ def fetch_history(
     asset: Asset,
     lookback_days: int,
     providers: list[str] | tuple[str, ...] | None = None,
+    *,
+    cache: MarketDataCache | None = None,
 ) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     provider_names = list(providers or ["akshare", "yfinance"])
+    cached = cache.load(asset.symbol) if cache else None
+
+    if cache and cached and cache.is_fresh(cached) and _cache_covers(cached, lookback_days):
+        return _result_from_cache(asset, cached, lookback_days)
+
     errors: list[str] = []
     for provider_name in provider_names:
         spec = get_provider(provider_name)
@@ -63,10 +84,76 @@ def fetch_history(
             errors.append(f"{provider_name}: does not support {asset.market} asset {asset.symbol}")
             continue
         try:
-            return spec.fetch(asset, lookback_days)
+            if (
+                cached is not None
+                and spec.fetch_since is not None
+                and cached.source == spec.name
+                and _cache_covers(cached, lookback_days)
+            ):
+                hydrated, snapshot, history, merged = _incremental_fetch(spec, asset, cached, lookback_days)
+            else:
+                hydrated, snapshot, history = spec.fetch(asset, lookback_days)
+                merged = history
+            if cache:
+                cache.store(
+                    asset.symbol,
+                    merged,
+                    source=spec.name,
+                    name=hydrated.name,
+                    currency=hydrated.currency,
+                    lookback_days=lookback_days,
+                )
+            return hydrated, snapshot, history
         except MarketDataError as exc:
             errors.append(f"{provider_name}: {exc}")
+
+    if cached is not None:
+        logger.warning(
+            "All providers failed for %s; serving stale cache from %s (%s rows).",
+            asset.symbol,
+            cached.last_date.date() if cached.last_date is not None else "unknown",
+            len(cached.history),
+        )
+        return _result_from_cache(asset, cached, lookback_days)
     raise MarketDataError(f"No provider returned data for {asset.symbol}. " + " | ".join(errors))
+
+
+def _cache_covers(cached: CachedHistory, lookback_days: int) -> bool:
+    return len(cached.history) >= lookback_days or cached.lookback_days >= lookback_days
+
+
+def _result_from_cache(
+    asset: Asset,
+    cached: CachedHistory,
+    lookback_days: int,
+) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+    history = cached.history.tail(lookback_days).reset_index(drop=True)
+    name = asset.name or cached.name or asset.symbol
+    currency = asset.currency or cached.currency
+    snapshot = _snapshot(asset.symbol, name, currency, history, source=cached.source or "cache")
+    return replace(asset, name=name, currency=currency), snapshot, history
+
+
+def _incremental_fetch(
+    spec: ProviderSpec,
+    asset: Asset,
+    cached: CachedHistory,
+    lookback_days: int,
+) -> tuple[Asset, PriceSnapshot, pd.DataFrame, pd.DataFrame]:
+    assert spec.fetch_since is not None
+    last_date = cached.last_date
+    since = (last_date - pd.Timedelta(days=_INCREMENTAL_OVERLAP_DAYS)).date() if last_date is not None else None
+    if since is None:
+        raise MarketDataError(f"Cache for {asset.symbol} has no usable dates.")
+    fresh_rows = spec.fetch_since(asset, since)
+    merged = pd.concat([cached.history, fresh_rows], ignore_index=True)
+    merged["Date"] = pd.to_datetime(merged["Date"])
+    merged = merged.drop_duplicates(subset="Date", keep="last").sort_values("Date").reset_index(drop=True)
+    history = merged.tail(lookback_days).reset_index(drop=True)
+    name = asset.name or cached.name or asset.symbol
+    currency = asset.currency or cached.currency
+    snapshot = _snapshot(asset.symbol, name, currency, history, source=spec.name)
+    return replace(asset, name=name, currency=currency), snapshot, history, merged
 
 
 def _provider(name: str) -> Provider | None:
@@ -94,11 +181,35 @@ def _fetch_yfinance(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnaps
     history.columns = [str(column).split(" ")[0] for column in history.columns]
     history = _normalize_history(history, asset.symbol).tail(lookback_days).reset_index(drop=True)
 
-    info = _safe_info(ticker)
-    name = asset.name or info.get("shortName") or info.get("longName") or asset.symbol
-    currency = asset.currency or info.get("currency")
+    name = asset.name
+    currency = asset.currency
+    if not name or not currency:
+        # fast_info is a cheap quote lookup; ticker.info triggers a slow full
+        # scrape, so only fall back to it when the name is still unknown.
+        fast = _fast_info(ticker)
+        currency = currency or fast.get("currency")
+        if not name:
+            slow = _slow_info(ticker)
+            name = slow.get("shortName") or slow.get("longName")
+            currency = currency or slow.get("currency")
+    name = name or asset.symbol
     snapshot = _snapshot(asset.symbol, name, currency, history, source="yfinance")
     return replace(asset, name=name, currency=currency), snapshot, history
+
+
+def _fetch_yfinance_since(asset: Asset, since: date) -> pd.DataFrame:
+    try:
+        import yfinance as yf
+    except ImportError as exc:
+        raise MarketDataError("yfinance is required for market data. Run `pip install -e .`.") from exc
+
+    ticker = yf.Ticker(asset.symbol)
+    history = ticker.history(start=since.isoformat(), auto_adjust=False)
+    if history.empty:
+        return pd.DataFrame(columns=["Date", "Open", "High", "Low", "Close", "Volume"])
+    history = history.reset_index()
+    history.columns = [str(column).split(" ")[0] for column in history.columns]
+    return _normalize_history(history, asset.symbol)
 
 
 def _fetch_akshare(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
@@ -125,20 +236,45 @@ def _fetch_akshare(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapsh
     if raw is None or raw.empty:
         raise MarketDataError(f"No AkShare data returned for {asset.symbol}.")
 
-    mapping = {
-        "日期": "Date",
-        "开盘": "Open",
-        "最高": "High",
-        "最低": "Low",
-        "收盘": "Close",
-        "成交量": "Volume",
-    }
-    history = raw.rename(columns=mapping)
+    history = raw.rename(columns=_AKSHARE_COLUMNS)
     history = _normalize_history(history, asset.symbol).tail(lookback_days)
     name = asset.name or asset.symbol
     currency = asset.currency or "CNY"
     snapshot = _snapshot(asset.symbol, name, currency, history, source="akshare")
     return replace(asset, name=name, currency=currency), snapshot, history
+
+
+_AKSHARE_COLUMNS = {
+    "日期": "Date",
+    "开盘": "Open",
+    "最高": "High",
+    "最低": "Low",
+    "收盘": "Close",
+    "成交量": "Volume",
+}
+
+
+def _fetch_akshare_since(asset: Asset, since: date) -> pd.DataFrame:
+    code = _a_share_code(asset)
+    if not code:
+        raise MarketDataError("AkShare provider only handles mainland A-share symbols.")
+    try:
+        import akshare as ak
+    except ImportError as exc:
+        raise MarketDataError("akshare is not installed. Run `pip install -e .[cn]` to enable it.") from exc
+    try:
+        raw = ak.stock_zh_a_hist(
+            symbol=code,
+            period="daily",
+            start_date=since.strftime("%Y%m%d"),
+            end_date=date.today().strftime("%Y%m%d"),
+            adjust="",
+        )
+    except Exception as exc:
+        raise MarketDataError(f"AkShare request failed: {exc}") from exc
+    if raw is None or raw.empty:
+        return pd.DataFrame(columns=["Date", "Open", "High", "Low", "Close", "Volume"])
+    return _normalize_history(raw.rename(columns=_AKSHARE_COLUMNS), asset.symbol)
 
 
 def _fetch_baostock(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
@@ -154,23 +290,24 @@ def _fetch_baostock(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnaps
     bs_code = f"{exchange}.{code}"
     end_date = date.today()
     start_date = end_date - timedelta(days=max(lookback_days * 2, 90))
-    login = bs.login()
-    if getattr(login, "error_code", "0") != "0":
-        raise MarketDataError(f"Baostock login failed: {getattr(login, 'error_msg', '')}")
-    try:
-        query = bs.query_history_k_data_plus(
-            bs_code,
-            "date,open,high,low,close,volume",
-            start_date=start_date.isoformat(),
-            end_date=end_date.isoformat(),
-            frequency="d",
-            adjustflag="3",
-        )
-        rows = []
-        while query.next():
-            rows.append(query.get_row_data())
-    finally:
-        bs.logout()
+    with _BAOSTOCK_LOCK:
+        login = bs.login()
+        if getattr(login, "error_code", "0") != "0":
+            raise MarketDataError(f"Baostock login failed: {getattr(login, 'error_msg', '')}")
+        try:
+            query = bs.query_history_k_data_plus(
+                bs_code,
+                "date,open,high,low,close,volume",
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+                frequency="d",
+                adjustflag="3",
+            )
+            rows = []
+            while query.next():
+                rows.append(query.get_row_data())
+        finally:
+            bs.logout()
     if not rows:
         raise MarketDataError(f"No Baostock data returned for {asset.symbol}.")
     raw = pd.DataFrame(rows, columns=["Date", "Open", "High", "Low", "Close", "Volume"])
@@ -294,7 +431,9 @@ def _ensure_builtin_providers() -> None:
         return
     def mainland(asset: Asset) -> bool:
         return _a_share_code(asset) is not None
-    register_provider(ProviderSpec("akshare", _fetch_akshare, mainland, markets=("CN",)))
+    register_provider(
+        ProviderSpec("akshare", _fetch_akshare, mainland, markets=("CN",), fetch_since=_fetch_akshare_since)
+    )
     register_provider(ProviderSpec("baostock", _fetch_baostock, mainland, markets=("CN",)))
     register_provider(ProviderSpec("tushare", _fetch_tushare, mainland, markets=("CN",)))
     register_provider(
@@ -304,13 +443,21 @@ def _ensure_builtin_providers() -> None:
             lambda asset: True,
             aliases=("yf",),
             markets=("US", "CN", "HK", "CRYPTO"),
+            fetch_since=_fetch_yfinance_since,
         )
     )
     _BUILTINS_READY = True
 
 
-def _safe_info(ticker: object) -> dict:
+def _fast_info(ticker: object) -> dict:
     try:
-        return dict(getattr(ticker, "fast_info", {}) or {}) | dict(getattr(ticker, "info", {}) or {})
+        return dict(getattr(ticker, "fast_info", {}) or {})
+    except Exception:
+        return {}
+
+
+def _slow_info(ticker: object) -> dict:
+    try:
+        return dict(getattr(ticker, "info", {}) or {})
     except Exception:
         return {}
