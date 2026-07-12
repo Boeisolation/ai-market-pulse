@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from .models import Asset
+from .models import Asset, is_otc_fund_symbol
 
 
 ENV_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)(?::-(.*?))?\}")
@@ -46,7 +46,7 @@ class AnalysisSettings:
 
 @dataclass(frozen=True)
 class DataSettings:
-    providers: list[str] = field(default_factory=lambda: ["akshare", "yfinance"])
+    providers: list[str] = field(default_factory=lambda: ["akshare", "akshare_fund", "yfinance"])
     cache_enabled: bool = True
     cache_dir: str = "data/market-cache"
     cache_ttl_minutes: int = 30
@@ -188,17 +188,23 @@ def load_config_from_mapping(raw: dict[str, Any]) -> AppConfig:
 
 def _parse_asset(item: dict[str, Any] | str) -> Asset:
     if isinstance(item, str):
-        return Asset(symbol=item)
+        return Asset(symbol=item, market=_default_market(item))
     return Asset(
         symbol=item["symbol"],
         name=item.get("name"),
-        market=item.get("market", "US"),
+        market=item.get("market", _default_market(item["symbol"])),
         currency=item.get("currency"),
         tags=list(item.get("tags", []) or []),
         quantity=item.get("quantity"),
         cost_basis=item.get("cost_basis"),
         note=item.get("note"),
     )
+
+
+def _default_market(symbol: str) -> str:
+    # OTC funds (`.OF`) are mainland-only; without this a bare string entry
+    # would default to "US" and be benchmarked against SPY.
+    return "CN" if is_otc_fund_symbol(str(symbol)) else "US"
 
 
 def _filter_dataclass(cls: type, values: dict[str, Any]) -> dict[str, Any]:

@@ -10,7 +10,7 @@ import os
 import pandas as pd
 
 from .market_cache import CachedHistory, MarketDataCache
-from .models import Asset, PriceSnapshot
+from .models import Asset, PriceSnapshot, is_otc_fund_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,11 @@ _INCREMENTAL_OVERLAP_DAYS = 7
 # baostock keeps login state in module-level globals, so concurrent fetches
 # must serialize around login/logout.
 _BAOSTOCK_LOCK = threading.Lock()
+
+# fund_name_em downloads the full ~20k-fund directory (one static JS file);
+# fetch it once per process and share it across worker threads.
+_FUND_DIRECTORY_LOCK = threading.Lock()
+_FUND_DIRECTORY: dict[str, tuple[str, str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -282,6 +287,99 @@ def _fetch_akshare_since(asset: Asset, since: date) -> pd.DataFrame:
     return _normalize_history(raw.rename(columns=_AKSHARE_COLUMNS), asset.symbol)
 
 
+def _fund_code(asset: Asset) -> str | None:
+    symbol = asset.symbol.strip().upper()
+    return symbol[:6] if is_otc_fund_symbol(symbol) else None
+
+
+def _fund_directory() -> dict[str, tuple[str, str]]:
+    global _FUND_DIRECTORY
+    with _FUND_DIRECTORY_LOCK:
+        if _FUND_DIRECTORY is None:
+            try:
+                import akshare as ak
+
+                raw = ak.fund_name_em()
+                _FUND_DIRECTORY = {
+                    str(code): (str(name), str(kind))
+                    for code, name, kind in zip(raw["基金代码"], raw["基金简称"], raw["基金类型"])
+                }
+            except Exception as exc:
+                # Directory is best-effort: without it funds lose their display
+                # name and the money-fund guard, but NAV fetching still works.
+                logger.warning("Fund directory lookup failed: %s", exc)
+                _FUND_DIRECTORY = {}
+    return _FUND_DIRECTORY
+
+
+def _fetch_akshare_fund(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
+    code = _fund_code(asset)
+    if not code:
+        raise MarketDataError("AkShare fund provider only handles 6-digit `.OF` fund symbols.")
+    try:
+        import akshare as ak
+    except ImportError as exc:
+        raise MarketDataError("akshare is not installed. Run `pip install -e .[cn]` to enable it.") from exc
+
+    directory_name, fund_type = _fund_directory().get(code, (None, ""))
+    if fund_type and ("货币" in fund_type or "理财" in fund_type):
+        raise MarketDataError(
+            f"{code} 是{fund_type}基金：净值恒定在 1 元附近，技术面分析无意义，请当作现金处理。"
+        )
+    try:
+        raw = ak.fund_open_fund_info_em(symbol=code, indicator="单位净值走势")
+    except Exception as exc:
+        raise MarketDataError(f"AkShare fund NAV request failed: {exc}") from exc
+    if raw is None or raw.empty:
+        raise MarketDataError(f"No fund NAV data returned for {asset.symbol}.")
+
+    history = _fund_nav_to_history(raw, asset.symbol).tail(lookback_days).reset_index(drop=True)
+    name = asset.name or directory_name or asset.symbol
+    currency = asset.currency or "CNY"
+    snapshot = _snapshot(asset.symbol, name, currency, history, source="akshare_fund")
+    return replace(asset, name=name, currency=currency, market="CN"), snapshot, history
+
+
+def _fund_nav_to_history(raw: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    data = raw.copy()
+    data["净值日期"] = pd.to_datetime(data["净值日期"], errors="coerce")
+    data["单位净值"] = pd.to_numeric(data["单位净值"], errors="coerce")
+    data = data.dropna(subset=["净值日期", "单位净值"]).sort_values("净值日期").reset_index(drop=True)
+    if data.empty:
+        raise MarketDataError(f"No usable NAV rows for {symbol}.")
+
+    unit = data["单位净值"].astype(float)
+    # East Money's 日增长率 is dividend-adjusted (on ex-dividend days it reports
+    # the true return, not the raw NAV drop — verified against 161725 which
+    # shows -0.24% growth on a day the raw NAV fell 33%). Compounding it and
+    # anchoring at the latest published NAV yields an adjusted series whose
+    # last value matches what fund apps display.
+    if "日增长率" in data:
+        growth = pd.to_numeric(data["日增长率"], errors="coerce") / 100.0
+        growth = growth.fillna(unit.pct_change())
+    else:
+        growth = unit.pct_change()
+    growth.iloc[0] = 0.0
+    growth = growth.fillna(0.0)
+    factor = (1.0 + growth).cumprod()
+    adjusted = unit.iloc[-1] * factor / factor.iloc[-1]
+
+    # Degenerate OHLC bars keep the indicator engine untouched: True Range
+    # collapses to |Δclose| (a fair daily-volatility proxy for NAV series) and
+    # the NaN volume disables volume-based scoring automatically.
+    frame = pd.DataFrame(
+        {
+            "Date": data["净值日期"],
+            "Open": adjusted,
+            "High": adjusted,
+            "Low": adjusted,
+            "Close": adjusted,
+            "Volume": float("nan"),
+        }
+    )
+    return _normalize_history(frame, symbol)
+
+
 def _fetch_baostock(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:
     code = _a_share_code(asset)
     if not code:
@@ -436,8 +534,16 @@ def _ensure_builtin_providers() -> None:
         return
     def mainland(asset: Asset) -> bool:
         return _a_share_code(asset) is not None
+    def otc_fund(asset: Asset) -> bool:
+        return _fund_code(asset) is not None
     register_provider(
         ProviderSpec("akshare", _fetch_akshare, mainland, markets=("CN",), fetch_since=_fetch_akshare_since)
+    )
+    # pingzhongdata returns the full NAV history in one static JS file, so an
+    # incremental fetch_since would not save anything — the TTL cache already
+    # absorbs repeat calls.
+    register_provider(
+        ProviderSpec("akshare_fund", _fetch_akshare_fund, otc_fund, aliases=("fund", "eastmoney_fund"), markets=("CN",))
     )
     register_provider(ProviderSpec("baostock", _fetch_baostock, mainland, markets=("CN",)))
     register_provider(ProviderSpec("tushare", _fetch_tushare, mainland, markets=("CN",)))
@@ -445,7 +551,9 @@ def _ensure_builtin_providers() -> None:
         ProviderSpec(
             "yfinance",
             _fetch_yfinance,
-            lambda asset: True,
+            # Yahoo has no data for mainland OTC funds; skip them instead of
+            # burning a guaranteed-to-fail network round trip.
+            lambda asset: _fund_code(asset) is None,
             aliases=("yf",),
             markets=("US", "CN", "HK", "CRYPTO"),
             fetch_since=_fetch_yfinance_since,

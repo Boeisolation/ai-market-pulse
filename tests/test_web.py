@@ -16,7 +16,7 @@ def test_render_console_html_contains_visual_symbol_form() -> None:
     assert "/api/analyze" in html
     assert "/api/portfolio/extract" in html
     assert "/api/ask" in html
-    assert "导入券商持仓截图" in html
+    assert "导入券商或基金App持仓截图" in html
     assert "新增持仓" in html
     assert 'body.alerts.join("\\n")' in html
     assert "创建今日量化研究任务" in html

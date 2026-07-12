@@ -86,7 +86,7 @@ def test_load_config_from_mapping_applies_defaults_for_optional_sections() -> No
     config = load_config_from_mapping(_minimal_mapping())
 
     assert config.analysis.lookback_days == 220
-    assert config.data.providers == ["akshare", "yfinance"]
+    assert config.data.providers == ["akshare", "akshare_fund", "yfinance"]
     assert config.benchmarks.enabled is True
     assert config.news.language == "en-US"
     assert config.llm.enabled is False

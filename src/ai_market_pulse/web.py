@@ -158,13 +158,13 @@ def render_console_html() -> str:
     <form class="panel form-grid work-panel" data-run-form>
       <div class="panel-heading"><h2><span data-i18n-en>Research Inputs</span><span data-i18n-zh>研究输入</span></h2><span class="mono">01—02</span></div>
       <div class="field">
-        <label for="portfolio-image"><span data-i18n-en>Import brokerage screenshot</span><span data-i18n-zh>导入券商持仓截图</span></label>
+        <label for="portfolio-image"><span data-i18n-en>Import brokerage / fund-app screenshot</span><span data-i18n-zh>导入券商或基金App持仓截图</span></label>
         <div class="import-tools">
           <input id="portfolio-image" type="file" accept="image/png,image/jpeg,image/webp" data-portfolio-image>
           <button class="secondary-button" type="button" data-import-portfolio><span data-i18n-en>Recognize holdings</span><span data-i18n-zh>识别持仓</span></button>
           <button class="secondary-button" type="button" data-add-position aria-label="Add position"><span data-i18n-en>Add row</span><span data-i18n-zh>新增持仓</span></button>
         </div>
-        <p class="fineprint" data-import-status><span data-i18n-en>The image is sent to your configured AI provider for transcription. Remove private account details and review every field.</span><span data-i18n-zh>图片会发送给你配置的 AI 服务商进行抄录。请先遮盖账号等隐私信息，并逐项确认结果。</span></p>
+        <p class="fineprint" data-import-status><span data-i18n-en>The image is sent to your configured AI provider for transcription. OTC mutual funds are tagged with the .OF suffix; money-market funds are treated as cash and skipped. Remove private account details and review every field.</span><span data-i18n-zh>图片会发送给你配置的 AI 服务商进行抄录。场外基金会自动加 .OF 后缀，货币基金按现金处理不导入。请先遮盖账号等隐私信息，并逐项确认结果。</span></p>
         <div class="portfolio-editor" data-portfolio-editor></div>
       </div>
       <div class="field">

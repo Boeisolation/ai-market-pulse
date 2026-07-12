@@ -5,6 +5,15 @@ from datetime import datetime
 from typing import Any
 
 
+OTC_FUND_SUFFIX = ".OF"
+
+
+def is_otc_fund_symbol(symbol: str) -> bool:
+    """Mainland OTC mutual funds use the Wind/East Money convention: 6-digit code + `.OF`."""
+    text = symbol.strip().upper()
+    return text.endswith(OTC_FUND_SUFFIX) and len(text) == 9 and text[:6].isdigit()
+
+
 @dataclass(frozen=True)
 class Asset:
     symbol: str

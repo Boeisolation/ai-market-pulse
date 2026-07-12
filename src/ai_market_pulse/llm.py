@@ -77,10 +77,16 @@ def extract_portfolio_from_image(
         {
             "role": "system",
             "content": (
-                "Extract portfolio holdings from a brokerage screenshot. Return JSON only as "
+                "Extract portfolio holdings from a brokerage or fund-app screenshot. Return JSON only as "
                 '{"assets":[{"symbol":"AAPL","name":"Apple","market":"US","quantity":10,'
                 '"cost_basis":185,"tags":[]}]}. Never infer a missing quantity or cost. Use null. '
-                "For mainland China symbols, preserve the six-digit code. This is transcription, not financial advice."
+                "Mainland China symbol rules: exchange-listed stocks keep the bare six-digit code. "
+                "OTC mutual funds (场外基金) MUST get the suffix .OF, e.g. 005827.OF with market CN — the "
+                "screenshot rarely shows this suffix, so infer fund vs stock from context: fund platforms "
+                "(支付宝基金/蚂蚁财富, 天天基金, bank wealth apps) list funds, and fund names typically contain "
+                "混合, 债券, 指数, 股票型, 联接, QDII, FOF, 增强 or 持有期. "
+                "Money-market funds (货币基金, e.g. 余额宝) are cash equivalents: skip them entirely. "
+                "This is transcription, not financial advice."
             ),
         },
         {

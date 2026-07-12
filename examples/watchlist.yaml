@@ -9,7 +9,7 @@ analysis:
 data:
   # AkShare is optional. Install with: pip install -e ".[cn]"
   # If AkShare is unavailable or does not support a symbol, yfinance is used as fallback.
-  providers: ["akshare", "yfinance"]
+  providers: ["akshare", "akshare_fund", "yfinance"]
 
 benchmarks:
   enabled: true
@@ -80,6 +80,12 @@ assets:
     quantity: 1
     cost_basis: 1500
     tags: ["a-share", "consumer"]
+  # Mainland OTC mutual fund (Alipay / 天天基金 / bank apps): 6-digit code + .OF.
+  # Needs the akshare_fund provider; money-market funds are treated as cash.
+  - symbol: "005827.OF"
+    name: "易方达蓝筹精选混合"
+    market: "CN"
+    tags: ["otc-fund"]
 
 notifications:
   - type: "telegram"

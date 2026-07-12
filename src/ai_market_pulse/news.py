@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 
 from .config import NewsSettings
 from .market_data import _a_share_code
-from .models import Asset, NewsItem
+from .models import Asset, NewsItem, is_otc_fund_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,14 @@ def fetch_news(asset: Asset, settings: NewsSettings) -> list[NewsItem]:
         return []
 
     items: list[NewsItem] = []
+    if is_otc_fund_symbol(asset.symbol):
+        # There is no per-fund news feed; a query like "005827.OF stock" only
+        # returns noise, so search by the Chinese fund name — or skip news
+        # entirely when the name is unknown.
+        if not asset.name or asset.name == asset.symbol:
+            return []
+        items = _fetch_google_news_query([asset.name, "基金", f"when:{settings.lookback_days}d"], settings)
+        return _rank_and_dedupe(items, asset, settings.items_per_asset)
     code = _a_share_code(asset)
     if code:
         # Google News queries like "600519.SS stock" return poor results for
@@ -34,6 +42,10 @@ def _fetch_google_news(asset: Asset, settings: NewsSettings) -> list[NewsItem]:
     if asset.name and asset.name != asset.symbol:
         query_parts.append(asset.name)
     query_parts.extend(["stock", f"when:{settings.lookback_days}d"])
+    return _fetch_google_news_query(query_parts, settings)
+
+
+def _fetch_google_news_query(query_parts: list[str], settings: NewsSettings) -> list[NewsItem]:
     query = urllib.parse.quote(" ".join(query_parts))
     language = settings.language or "en-US"
     region = settings.region or "US"

@@ -161,8 +161,31 @@ Open `site/index.html`. The generated report, dashboard, and site include an EN 
 
 ```yaml
 data:
-  providers: ["akshare", "yfinance"]
+  providers: ["akshare", "akshare_fund", "yfinance"]
 ```
+
+### Mainland OTC Mutual Funds (场外基金)
+
+Funds sold through Alipay, East Money / 天天基金, or bank apps are supported with the
+Wind-style `.OF` suffix — six-digit fund code plus `.OF`:
+
+```bash
+market-pulse run --symbols "005827.OF,161725.OF" --output reports
+```
+
+Notes:
+
+- NAV history comes from East Money (`akshare_fund` provider) and is
+  dividend-adjusted (daily growth rates are compounded and anchored to the latest
+  published unit NAV, so the last price matches what fund apps display).
+- Volume-based signals are skipped automatically (funds have no volume); the ATR
+  reading degrades to a close-to-close volatility proxy.
+- Money-market funds (货币基金, e.g. 余额宝) are rejected on purpose — their NAV is
+  pinned near 1 and technical analysis is meaningless; treat them as cash.
+- Bank-issued wealth-management products (银行自营理财) have no public NAV API and
+  cannot be supported.
+- The web console's screenshot import recognizes fund-app holdings and appends
+  `.OF` automatically.
 
 ## Benchmarks And Freshness
 

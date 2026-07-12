@@ -244,7 +244,7 @@ def _normalize_symbol(symbol: str) -> str:
 
 def _infer_market(symbol: str) -> str:
     text = symbol.strip().upper()
-    if text.endswith((".SS", ".SZ")) or re.fullmatch(r"\d{6}", text):
+    if text.endswith((".SS", ".SZ", ".OF")) or re.fullmatch(r"\d{6}", text):
         return "CN"
     if text.endswith("-USD"):
         return "CRYPTO"

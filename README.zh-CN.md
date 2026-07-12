@@ -165,8 +165,27 @@ market-pulse site --reports reports --output site --title "AI Market Pulse"
 
 ```yaml
 data:
-  providers: ["akshare", "yfinance"]
+  providers: ["akshare", "akshare_fund", "yfinance"]
 ```
+
+### 场外公募基金（支付宝 / 天天基金 / 银行代销）
+
+场外基金使用 Wind 惯例的 `.OF` 后缀（6 位基金代码 + `.OF`）：
+
+```bash
+market-pulse run --symbols "005827.OF,161725.OF" --output reports
+```
+
+说明：
+
+- 净值历史来自东方财富天天基金（`akshare_fund` 数据源），并做了**分红复权**：
+  按日增长率累乘、锚定最新披露单位净值，报告里的最新价与基金 App 显示一致，
+  历史序列在分红除息日保持连续，均线/RSI/回撤不会被分红砸出假暴跌。
+- 基金没有成交量，量能类信号自动跳过；ATR 退化为"日收益波幅"的代理指标。
+- **货币基金（如余额宝）会被明确拒绝**——净值恒定在 1 元附近，技术面分析无意义，
+  请当作现金处理。
+- **银行自营理财产品不支持**——各银行只在自家 App 内披露净值，没有公开行情 API。
+- Web 控制台的持仓截图识别会自动区分基金与 A 股，为场外基金补上 `.OF` 后缀。
 
 ## 基准与数据新鲜度
 
