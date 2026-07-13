@@ -19,7 +19,7 @@ from .dashboard import write_dashboard
 from .engine import run_analysis
 from .history import append_history, attach_history, load_history
 from .llm import answer_report_question, extract_portfolio_from_image
-from .portfolio_import import normalize_portfolio_assets
+from .portfolio_import import normalize_portfolio_assets, resolve_fund_records
 from .reporting import write_reports
 from .sample import custom_watchlist_config, parse_symbols
 from .site import build_site
@@ -596,7 +596,10 @@ def _extract_portfolio_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not image or len(image) > 8 * 1024 * 1024:
         raise ValueError("Use a non-empty image under 8 MB.")
     records = extract_portfolio_from_image(image, media_type, _console_llm_settings())
-    assets = normalize_portfolio_assets(records)
+    # Fund apps rarely show codes; resolve them from the transcribed names and
+    # keep unmatched funds as blank-symbol rows for the user to complete.
+    records, unresolved = resolve_fund_records(records)
+    assets = normalize_portfolio_assets(records) + unresolved
     if not assets:
         raise ValueError("No holdings were recognized. Try a clearer screenshot or enter symbols manually.")
     return {"assets": assets}

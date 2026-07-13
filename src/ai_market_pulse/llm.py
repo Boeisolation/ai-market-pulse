@@ -93,14 +93,17 @@ def extract_portfolio_from_image(
             "content": (
                 "Extract portfolio holdings from a brokerage or fund-app screenshot. Return JSON only as "
                 '{"assets":[{"symbol":"AAPL","name":"Apple","market":"US","quantity":10,'
-                '"cost_basis":185,"tags":[]}]}. Never infer a missing quantity or cost. Use null. '
-                "Mainland China symbol rules: exchange-listed stocks keep the bare six-digit code. "
-                "OTC mutual funds (场外基金) MUST get the suffix .OF, e.g. 005827.OF with market CN — the "
-                "screenshot rarely shows this suffix, so infer fund vs stock from context: fund platforms "
-                "(支付宝基金/蚂蚁财富, 天天基金, bank wealth apps) list funds, and fund names typically contain "
+                '"cost_basis":185,"tags":[]}]}. This is strict transcription: NEVER invent any value that '
+                "is not visible in the image — no guessed codes, quantities, or costs; use null instead. "
+                "Mainland China rules: exchange-listed stocks keep the bare six-digit code. "
+                "OTC mutual funds (场外基金) use the six-digit fund code with suffix .OF and market CN, but "
+                "ONLY when the code is actually visible; fund-app holding lists (支付宝/蚂蚁财富, 天天基金, "
+                "bank wealth apps) usually show names without codes — then set symbol to null and copy the "
+                "exact fund name into name. Recognize funds by context: fund names typically contain "
                 "混合, 债券, 指数, 股票型, 联接, QDII, FOF, 增强 or 持有期. "
                 "Money-market funds (货币基金, e.g. 余额宝) are cash equivalents: skip them entirely. "
-                "This is transcription, not financial advice."
+                "Amounts labelled 金额/市值/持有金额 are position values, not share counts: leave quantity "
+                "null unless 份额/持有份额 is explicitly shown."
             ),
         },
         {

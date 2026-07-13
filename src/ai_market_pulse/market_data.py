@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
+from difflib import SequenceMatcher
 from typing import Callable
 import os
 
@@ -310,6 +312,63 @@ def _fund_directory() -> dict[str, tuple[str, str]]:
                 logger.warning("Fund directory lookup failed: %s", exc)
                 _FUND_DIRECTORY = {}
     return _FUND_DIRECTORY
+
+
+def fund_directory_lookup(code: str) -> tuple[str, str] | None:
+    """Return (name, type) for a 6-digit fund code, or None if unknown."""
+    return _fund_directory().get(code)
+
+
+_FUND_MATCH_THRESHOLD = 0.80
+_SHARE_CLASS_LETTERS = "ABCEY"
+
+
+def _share_class(name: str) -> str | None:
+    return name[-1] if name and name[-1] in _SHARE_CLASS_LETTERS else None
+
+
+def match_fund_by_name(name: str) -> tuple[str, str] | None:
+    """Find the fund code for an app-displayed fund name via the directory.
+
+    Fund apps show display names that differ from the official short names
+    (extra 中证/(QDII)/低波动, missing 发起/人民币, …), so this uses fuzzy
+    matching hardened by three guards learned from real mismatches:
+    the two-character company prefix must agree (else 天弘… happily matches
+    广发…), an explicit share-class letter (A/C/E/Y) must agree, and any
+    digit runs must agree (中证500 vs 中证800). Below the 0.80 ratio floor
+    we return None — a blank symbol the user fills in beats a wrong fund.
+    """
+    query = re.sub(r"\s+", "", str(name or ""))
+    if len(query) < 4:
+        return None
+    directory = _fund_directory()
+    if not directory:
+        return None
+    prefix = query[:2]
+    query_class = _share_class(query)
+    query_digits = re.findall(r"\d+", query)
+    best: tuple[float, str, str] | None = None
+    for code, (dir_name, _fund_type) in directory.items():
+        if not dir_name.startswith(prefix):
+            continue
+        dir_class = _share_class(dir_name)
+        if query_class and dir_class and query_class != dir_class:
+            continue
+        if re.findall(r"\d+", dir_name) != query_digits:
+            continue
+        matcher = SequenceMatcher(None, query, dir_name)
+        if matcher.real_quick_ratio() < _FUND_MATCH_THRESHOLD:
+            continue
+        ratio = matcher.ratio()
+        if ratio >= _FUND_MATCH_THRESHOLD and (best is None or ratio > best[0]):
+            best = (ratio, code, dir_name)
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
+def fund_name_similarity(left: str, right: str) -> float:
+    return SequenceMatcher(None, str(left or ""), str(right or "")).ratio()
 
 
 def _fetch_akshare_fund(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:

@@ -7,7 +7,14 @@ from typing import Any
 import pandas as pd
 import yaml
 
+from .market_data import fund_directory_lookup, fund_name_similarity, match_fund_by_name
+from .models import is_otc_fund_symbol
 from .sample import SAMPLE_CONFIGS
+
+# A claimed .OF code is accepted only when the directory name for that code
+# still resembles the transcribed name; below this the code is treated as a
+# model hallucination and re-resolved from the name.
+_FUND_CODE_NAME_MIN_SIMILARITY = 0.55
 
 
 COLUMN_ALIASES = {
@@ -94,6 +101,56 @@ def read_portfolio_assets(input_path: str | Path) -> list[dict[str, Any]]:
             asset["tags"] = tags
         assets.append(asset)
     return assets
+
+
+def _has_cjk(text: str) -> bool:
+    return bool(re.search(r"[一-鿿]", text))
+
+
+def resolve_fund_records(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Resolve OTC fund codes from transcribed names via the fund directory.
+
+    Fund-app holding lists usually show no codes, and vision models invent
+    them when pressed (observed: 6/6 fabricated codes from a real 蚂蚁财富
+    screenshot). So: a record with a Chinese name and no symbol gets its code
+    looked up by name; a record whose claimed `.OF` code contradicts the
+    directory name is treated as fabricated and re-resolved. Returns
+    (resolved_records, unresolved_assets) — unresolved funds are surfaced as
+    blank-symbol rows for the user to complete instead of being dropped.
+    """
+    resolved: list[dict[str, Any]] = []
+    unresolved: list[dict[str, Any]] = []
+    for record in records:
+        symbol = _symbol_text(record.get("symbol")) or ""
+        name = _clean_text(record.get("name")) or ""
+        is_cn_fund_name = bool(name) and _has_cjk(name)
+
+        if symbol and is_otc_fund_symbol(symbol) and is_cn_fund_name:
+            entry = fund_directory_lookup(symbol.upper()[:6])
+            if entry is None or fund_name_similarity(name, entry[0]) < _FUND_CODE_NAME_MIN_SIMILARITY:
+                symbol = ""  # fabricated code; fall through to name matching
+        if symbol:
+            resolved.append(record)
+            continue
+        if not is_cn_fund_name:
+            continue
+
+        match = match_fund_by_name(name)
+        if match:
+            fixed = dict(record)
+            fixed["symbol"] = f"{match[0]}.OF"
+            fixed["market"] = "CN"
+            resolved.append(fixed)
+        else:
+            pending: dict[str, Any] = {"symbol": "", "name": name, "market": "CN"}
+            quantity = _number(record.get("quantity"))
+            cost_basis = _number(record.get("cost_basis"))
+            if quantity is not None:
+                pending["quantity"] = quantity
+            if cost_basis is not None:
+                pending["cost_basis"] = cost_basis
+            unresolved.append(pending)
+    return resolved, unresolved
 
 
 def normalize_portfolio_assets(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
