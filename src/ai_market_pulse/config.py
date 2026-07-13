@@ -25,6 +25,13 @@ class LLMSettings:
     cache_enabled: bool = True
     cache_dir: str = "data/ai-cache"
     prompts_dir: str | None = None
+    # Optional overrides for image tasks (screenshot import). Text-only
+    # providers such as DeepSeek cannot accept images, so vision requests can
+    # be routed to a different endpoint/model/key; unset fields fall back to
+    # the main settings above.
+    vision_base_url: str | None = None
+    vision_model: str | None = None
+    vision_api_key_env: str | None = None
 
 
 @dataclass(frozen=True)

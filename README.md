@@ -229,7 +229,17 @@ llm:
   prompts_dir: "prompts"
   cache_enabled: true
   cache_dir: "data/ai-cache"
+  # Screenshot import needs a vision-capable model. If your main provider is
+  # text-only (e.g. DeepSeek), route image requests elsewhere; unset fields
+  # fall back to the main settings.
+  vision_base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
+  vision_model: "gemini-2.5-flash"
+  vision_api_key_env: "VISION_API_KEY"
 ```
+
+The web console reads the same split from environment variables:
+`OPENAI_BASE_URL` / `OPENAI_MODEL` / `OPENAI_API_KEY` for text, plus optional
+`VISION_BASE_URL` / `VISION_MODEL` / `VISION_API_KEY` for screenshot import.
 
 ```bash
 export OPENAI_API_KEY="..."

@@ -575,6 +575,11 @@ def _console_llm_settings() -> LLMSettings:
         base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         model=os.getenv("OPENAI_MODEL") or None,
         cache_dir="data/ai-cache",
+        # Screenshot import needs a vision-capable model; when the main
+        # provider is text-only (e.g. DeepSeek), point these at another one.
+        vision_base_url=os.getenv("VISION_BASE_URL") or None,
+        vision_model=os.getenv("VISION_MODEL") or None,
+        vision_api_key_env="VISION_API_KEY" if os.getenv("VISION_API_KEY") else None,
     )
 
 

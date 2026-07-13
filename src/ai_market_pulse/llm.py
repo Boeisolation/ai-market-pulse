@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
 import urllib.error
 import urllib.request
@@ -64,12 +65,25 @@ def summarize_portfolio_with_llm(report: DailyReport, settings: LLMSettings) -> 
     return _chat_completion(messages, settings)
 
 
+def _vision_settings(settings: LLMSettings) -> LLMSettings:
+    """Route image requests to the vision overrides when any are configured."""
+    if not (settings.vision_base_url or settings.vision_model or settings.vision_api_key_env):
+        return settings
+    return replace(
+        settings,
+        base_url=settings.vision_base_url or settings.base_url,
+        model=settings.vision_model or settings.model,
+        api_key_env=settings.vision_api_key_env or settings.api_key_env,
+    )
+
+
 def extract_portfolio_from_image(
     image: bytes,
     media_type: str,
     settings: LLMSettings,
 ) -> list[dict[str, Any]]:
     _require_llm(settings)
+    settings = _vision_settings(settings)
     if media_type not in {"image/png", "image/jpeg", "image/webp"}:
         raise ValueError("Portfolio image must be PNG, JPEG, or WebP.")
     encoded = base64.b64encode(image).decode("ascii")

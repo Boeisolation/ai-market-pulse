@@ -222,6 +222,11 @@ export TUSHARE_TOKEN="..."
 ```yaml
 llm:
   enabled: true
+  # 截图识别需要能识图的模型。主服务商是纯文本（如 DeepSeek）时，
+  # 用 vision_* 三个字段把图片请求路由到另一家；不设则回落主配置。
+  # vision_base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
+  # vision_model: "gemini-2.5-flash"
+  # vision_api_key_env: "VISION_API_KEY"
   base_url: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
   api_key_env: "OPENAI_API_KEY"
   model: "${OPENAI_MODEL:-}"

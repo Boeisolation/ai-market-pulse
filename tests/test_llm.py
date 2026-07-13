@@ -83,3 +83,46 @@ def test_prompt_template_renders_context(tmp_path) -> None:
     rendered = _render_prompt_template(settings, "asset.md", "fallback", {"context": {"a": 1}})
 
     assert '"a": 1' in rendered
+
+
+def test_extract_portfolio_routes_to_vision_overrides(monkeypatch) -> None:
+    captured: dict[str, LLMSettings] = {}
+
+    def fake_chat(messages, settings):
+        captured["settings"] = settings
+        return '{"assets": [{"symbol": "005827.OF"}]}'
+
+    monkeypatch.setattr(llm, "_chat_completion", fake_chat)
+    monkeypatch.setenv("OPENAI_API_KEY", "text-key")
+    settings = LLMSettings(
+        enabled=True,
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-chat",
+        vision_base_url="https://vision.example/v1",
+        vision_model="vision-model",
+        vision_api_key_env="VISION_API_KEY",
+    )
+
+    llm.extract_portfolio_from_image(b"img", "image/png", settings)
+
+    routed = captured["settings"]
+    assert routed.base_url == "https://vision.example/v1"
+    assert routed.model == "vision-model"
+    assert routed.api_key_env == "VISION_API_KEY"
+
+
+def test_extract_portfolio_without_vision_overrides_keeps_main_settings(monkeypatch) -> None:
+    captured: dict[str, LLMSettings] = {}
+
+    def fake_chat(messages, settings):
+        captured["settings"] = settings
+        return "[]"
+
+    monkeypatch.setattr(llm, "_chat_completion", fake_chat)
+    monkeypatch.setenv("OPENAI_API_KEY", "text-key")
+    settings = LLMSettings(enabled=True, base_url="https://api.deepseek.com/v1", model="deepseek-chat")
+
+    llm.extract_portfolio_from_image(b"img", "image/png", settings)
+
+    assert captured["settings"].base_url == "https://api.deepseek.com/v1"
+    assert captured["settings"].model == "deepseek-chat"
