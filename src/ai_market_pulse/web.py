@@ -81,6 +81,10 @@ def render_console_html() -> str:
     .workflow-step strong {{ display: block; margin-top: 5px; font-size: 13px; }}
     .workflow-step small {{ display: block; margin-top: 2px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
     .form-grid {{ display: grid; gap: 12px; }}
+    /* Grid items default to min-width:auto and refuse to shrink below their
+       content, so the wide holdings table would overflow the panel and paint
+       underneath the results panel. */
+    .form-grid > * {{ min-width: 0; }}
     .work-panel {{ border-top: 2px solid var(--brand); }}
     .panel-heading {{ display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 11px; border-bottom: 1px solid var(--line); }}
     .panel-heading h2 {{ margin: 0; font-size: 17px; }}
@@ -163,6 +167,7 @@ def render_console_html() -> str:
           <input id="portfolio-image" type="file" accept="image/png,image/jpeg,image/webp" data-portfolio-image>
           <button class="secondary-button" type="button" data-import-portfolio><span data-i18n-en>Recognize holdings</span><span data-i18n-zh>识别持仓</span></button>
           <button class="secondary-button" type="button" data-add-position aria-label="Add position"><span data-i18n-en>Add row</span><span data-i18n-zh>新增持仓</span></button>
+          <button class="secondary-button" type="button" data-clear-positions aria-label="Clear positions"><span data-i18n-en>Clear all</span><span data-i18n-zh>清空持仓</span></button>
         </div>
         <p class="fineprint" data-import-status><span data-i18n-en>The image is sent to your configured AI provider for transcription. OTC mutual funds are tagged with the .OF suffix; money-market funds are treated as cash and skipped. Remove private account details and review every field.</span><span data-i18n-zh>图片会发送给你配置的 AI 服务商进行抄录。场外基金会自动加 .OF 后缀，货币基金按现金处理不导入。请先遮盖账号等隐私信息，并逐项确认结果。</span></p>
         <div class="portfolio-editor" data-portfolio-editor></div>
@@ -218,6 +223,7 @@ def render_console_html() -> str:
     var imageInput = document.querySelector("[data-portfolio-image]");
     var importButton = document.querySelector("[data-import-portfolio]");
     var addPositionButton = document.querySelector("[data-add-position]");
+    var clearPositionsButton = document.querySelector("[data-clear-positions]");
     var importStatus = document.querySelector("[data-import-status]");
     var portfolioEditor = document.querySelector("[data-portfolio-editor]");
     var askForm = document.querySelector("[data-ask-form]");
@@ -259,7 +265,7 @@ def render_console_html() -> str:
       var rows = assets.map(function (asset) {{
         var tags = Array.isArray(asset.tags) ? asset.tags.join(", ") : (asset.tags || "");
         return '<tr data-portfolio-row>' +
-          '<td><input data-field="symbol" value="' + esc(asset.symbol || "") + '" required></td>' +
+          '<td><input data-field="symbol" value="' + esc(asset.symbol || "") + '" placeholder="' + text("fill in", "待填") + '"></td>' +
           '<td><input data-field="name" value="' + esc(asset.name || "") + '"></td>' +
           '<td><input data-field="market" value="' + esc(asset.market || "") + '"></td>' +
           '<td><input data-field="quantity" type="number" step="any" value="' + esc(asset.quantity == null ? "" : asset.quantity) + '"></td>' +
@@ -272,14 +278,36 @@ def render_console_html() -> str:
       portfolioEditor.classList.add("is-visible");
       syncSymbolsFromEditor();
     }}
-    function editorAssets() {{
+    function editorAssets(includeBlank) {{
       return Array.prototype.slice.call(portfolioEditor.querySelectorAll("[data-portfolio-row]")).map(function (row) {{
         function value(field) {{ var input = row.querySelector('[data-field="' + field + '"]'); return input ? input.value.trim() : ""; }}
         var asset = {{ symbol: value("symbol"), name: value("name"), market: value("market"), tags: value("tags").split(/[,，;；]/).map(function (tag) {{ return tag.trim(); }}).filter(Boolean) }};
         if (value("quantity") !== "") asset.quantity = Number(value("quantity"));
         if (value("cost_basis") !== "") asset.cost_basis = Number(value("cost_basis"));
         return asset;
-      }}).filter(function (asset) {{ return asset.symbol; }});
+      }}).filter(function (asset) {{ return includeBlank || asset.symbol; }});
+    }}
+    function mergeEditorAssets(existing, incoming) {{
+      var merged = existing.slice();
+      var seenSymbols = {{}};
+      var seenNames = {{}};
+      var appended = 0;
+      existing.forEach(function (asset) {{
+        var symbol = String(asset.symbol || "").trim().toUpperCase();
+        var name = String(asset.name || "").trim();
+        if (symbol) seenSymbols[symbol] = true;
+        if (name) seenNames[name] = true;
+      }});
+      incoming.forEach(function (asset) {{
+        var symbol = String(asset.symbol || "").trim().toUpperCase();
+        var name = String(asset.name || "").trim();
+        if (symbol ? seenSymbols[symbol] : (name && seenNames[name])) return;
+        if (symbol) seenSymbols[symbol] = true;
+        if (name) seenNames[name] = true;
+        merged.push(asset);
+        appended += 1;
+      }});
+      return {{ assets: merged, appended: appended, skipped: incoming.length - appended }};
     }}
     function syncSymbolsFromEditor() {{
       var assets = editorAssets();
@@ -302,16 +330,24 @@ def render_console_html() -> str:
         var response = await fetch("/api/portfolio/extract", {{ method: "POST", headers: {{ "Content-Type": "application/json" }}, body: JSON.stringify({{ image: await readImage(file) }}) }});
         var body = await response.json();
         if (!response.ok) throw new Error(body.error || "Request failed");
-        renderPortfolioEditor(body.assets || []);
-        importStatus.textContent = text("Review every recognized field before running analysis.", "请逐项确认识别结果，再开始分析。");
+        var merge = mergeEditorAssets(editorAssets(true), body.assets || []);
+        renderPortfolioEditor(merge.assets);
+        var summary = merge.skipped
+          ? text("Appended " + merge.appended + " holdings, skipped " + merge.skipped + " duplicates. ", "已追加 " + merge.appended + " 项持仓，跳过重复 " + merge.skipped + " 项。")
+          : text("Appended " + merge.appended + " holdings. ", "已追加 " + merge.appended + " 项持仓。");
+        importStatus.textContent = summary + text("Review every recognized field before running analysis.", "请逐项确认识别结果，再开始分析。");
       }} catch (error) {{
         importStatus.textContent = error.message || String(error);
       }} finally {{ importButton.disabled = false; }}
     }});
     addPositionButton.addEventListener("click", function () {{
-      var assets = editorAssets();
+      var assets = editorAssets(true);
       assets.push({{ symbol: "", name: "", market: "US", quantity: "", cost_basis: "", tags: [] }});
       renderPortfolioEditor(assets);
+    }});
+    clearPositionsButton.addEventListener("click", function () {{
+      renderPortfolioEditor([]);
+      importStatus.textContent = text("Cleared all holdings.", "已清空全部持仓。");
     }});
     portfolioEditor.addEventListener("input", syncSymbolsFromEditor);
     portfolioEditor.addEventListener("click", function (event) {{
@@ -319,7 +355,7 @@ def render_console_html() -> str:
       if (!remove) return;
       remove.closest("[data-portfolio-row]").remove();
       syncSymbolsFromEditor();
-      if (!editorAssets().length) portfolioEditor.classList.remove("is-visible");
+      if (!editorAssets(true).length) portfolioEditor.classList.remove("is-visible");
     }});
     form.addEventListener("submit", async function (event) {{
       event.preventDefault();
