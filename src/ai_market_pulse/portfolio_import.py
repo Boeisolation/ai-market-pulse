@@ -7,7 +7,8 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from .market_data import fund_directory_lookup, fund_name_similarity, match_fund_by_name
+from .market_data import fund_directory_lookup, fund_name_similarity, match_fund_by_name, normalize_cn_code
+from .models import infer_market as _infer_market
 from .models import is_otc_fund_symbol
 from .sample import SAMPLE_CONFIGS
 
@@ -81,9 +82,12 @@ def read_portfolio_assets(input_path: str | Path) -> list[dict[str, Any]]:
         symbol = _symbol_text(row.get(resolved["symbol"]))
         if not symbol:
             continue
+        name_column = resolved.get("name")
+        row_name = _clean_text(row.get(name_column)) if name_column else None
+        normalized_symbol = _normalize_symbol(symbol, row_name)
         asset: dict[str, Any] = {
-            "symbol": _normalize_symbol(symbol),
-            "market": _clean_text(row.get(resolved.get("market"))) or _infer_market(symbol),
+            "symbol": normalized_symbol,
+            "market": _clean_text(row.get(resolved.get("market"))) or _infer_market(normalized_symbol),
         }
         for key in ["name", "currency", "note"]:
             column = resolved.get(key)
@@ -160,7 +164,7 @@ def normalize_portfolio_assets(records: list[dict[str, Any]]) -> list[dict[str, 
         symbol = _symbol_text(record.get("symbol"))
         if not symbol:
             continue
-        normalized_symbol = _normalize_symbol(symbol)
+        normalized_symbol = _normalize_symbol(symbol, _clean_text(record.get("name")))
         asset: dict[str, Any] = {
             "symbol": normalized_symbol,
             "market": _clean_text(record.get("market")) or _infer_market(normalized_symbol),
@@ -290,21 +294,8 @@ def _tags(value: object) -> list[str]:
     return [item.strip() for item in re.split(r"[,;|，；、]", text) if item.strip()]
 
 
-def _normalize_symbol(symbol: str) -> str:
+def _normalize_symbol(symbol: str, name: str | None = None) -> str:
     text = symbol.strip().upper()
     if re.fullmatch(r"\d{6}", text):
-        if text.startswith(("6", "5", "9")):
-            return f"{text}.SS"
-        return f"{text}.SZ"
+        return normalize_cn_code(text, name)
     return text
-
-
-def _infer_market(symbol: str) -> str:
-    text = symbol.strip().upper()
-    if text.endswith((".SS", ".SZ", ".OF")) or re.fullmatch(r"\d{6}", text):
-        return "CN"
-    if text.endswith("-USD"):
-        return "CRYPTO"
-    if text.endswith(".HK"):
-        return "HK"
-    return "US"

@@ -115,3 +115,55 @@ def test_prompt_forbids_inventing_codes(monkeypatch) -> None:
     assert "NEVER invent" in prompt
     assert "set symbol to null" in prompt
     assert "005827" not in prompt  # example codes get copied by the model
+
+
+# --- bare 6-digit code normalization (the 005051.SZ incident) ---
+
+
+def test_bare_code_with_fund_name_gets_of_suffix(monkeypatch) -> None:
+    # 摩根港股红利: user typed the bare code next to the app's fund name; the
+    # old exchange-only rule produced 005051.SZ (a nonexistent SZ ticker).
+    from ai_market_pulse.portfolio_import import normalize_portfolio_assets
+
+    assets = normalize_portfolio_assets(
+        [{"symbol": "005051", "name": "摩根港股红利指数A", "quantity": 10}]
+    )
+    assert assets[0]["symbol"] == "005051.OF"
+    assert assets[0]["market"] == "CN"
+
+
+def test_bare_code_prefers_a_share_when_name_says_stock(monkeypatch) -> None:
+    # 000001 is both 平安银行 (SZ) and 华夏成长混合 (fund): the name decides.
+    from ai_market_pulse.portfolio_import import normalize_portfolio_assets
+
+    stock = normalize_portfolio_assets([{"symbol": "000001", "name": "平安银行"}])
+    fund = normalize_portfolio_assets([{"symbol": "000001", "name": "华夏成长混合"}])
+    assert stock[0]["symbol"] == "000001.SZ"
+    assert fund[0]["symbol"] == "000001.OF"
+
+
+def test_bare_code_without_name_uses_directory_for_unlisted_prefixes(monkeypatch) -> None:
+    from ai_market_pulse.market_data import normalize_cn_code
+
+    # 53xxxx can never be an exchange ticker, so a directory hit is decisive.
+    assert normalize_cn_code("539002") == "539002.OF"
+    # 600519 is not in the fund directory: plain exchange rule.
+    assert normalize_cn_code("600519") == "600519.SS"
+    # Ambiguous listed prefix without a name stays on the exchange rule.
+    assert normalize_cn_code("161725") == "161725.SZ"
+
+
+def test_console_config_funds_get_cn_market_and_no_qqq_compare(monkeypatch) -> None:
+    import yaml
+
+    from ai_market_pulse.sample import custom_watchlist_config
+
+    config = yaml.safe_load(custom_watchlist_config(["005827.OF", "AAPL"]))
+    fund = config["assets"][0]
+    assert fund == {"symbol": "005827.OF", "market": "CN"}
+    # Funds follow default_by_market (CN → 000300.SS); only true US symbols
+    # get the per-symbol QQQ override.
+    assert "005827.OF" not in config["benchmarks"]["compare"]
+    assert config["benchmarks"]["compare"]["AAPL"] == "QQQ"
+    assert config["data"]["providers"] == ["akshare", "akshare_fund", "baostock", "yfinance"]
+    assert config["timezone"] == "Asia/Shanghai"

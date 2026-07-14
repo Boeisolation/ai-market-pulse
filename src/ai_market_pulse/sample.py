@@ -4,6 +4,10 @@ import re
 
 import yaml
 
+from .config import DEFAULT_PROVIDERS
+from .market_data import normalize_cn_code
+from .models import infer_market as _infer_market
+
 
 DEFAULT_CONFIG = """# AI Market Pulse starter config
 title: "My AI Market Pulse"
@@ -301,7 +305,7 @@ SAMPLE_CONFIG = SAMPLE_CONFIGS["default"]
 def custom_watchlist_config(
     symbols: list[str],
     title: str = "My AI Market Pulse",
-    timezone: str = "America/Los_Angeles",
+    timezone: str = "Asia/Shanghai",
     language: str = "zh-CN",
     providers: list[str] | None = None,
 ) -> str:
@@ -318,7 +322,7 @@ def custom_watchlist_config(
             "min_history_rows": 45,
         },
         "data": {
-            "providers": providers or ["yfinance"],
+            "providers": providers or list(DEFAULT_PROVIDERS),
         },
         "benchmarks": {
             "enabled": True,
@@ -385,19 +389,5 @@ def _benchmark_overrides(symbols: list[str]) -> dict[str, str]:
 def _normalize_symbol(symbol: str) -> str:
     text = symbol.strip().upper()
     if re.fullmatch(r"\d{1,6}", text):
-        padded = f"{int(text):06d}"
-        if padded.startswith(("6", "5", "9")):
-            return f"{padded}.SS"
-        return f"{padded}.SZ"
+        return normalize_cn_code(f"{int(text):06d}")
     return text
-
-
-def _infer_market(symbol: str) -> str:
-    text = symbol.strip().upper()
-    if text.endswith((".SS", ".SZ")) or re.fullmatch(r"\d{6}", text):
-        return "CN"
-    if text.endswith(".HK"):
-        return "HK"
-    if text.endswith("-USD"):
-        return "CRYPTO"
-    return "US"

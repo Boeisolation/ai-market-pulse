@@ -14,7 +14,7 @@ from urllib.parse import quote, unquote
 import yaml
 
 from .alerts import evaluate_alerts, load_alert_state, write_alert_state
-from .config import LLMSettings, load_config_from_mapping
+from .config import DEFAULT_PROVIDERS, LLMSettings, load_config_from_mapping
 from .dashboard import write_dashboard
 from .engine import run_analysis
 from .history import append_history, attach_history, load_history
@@ -183,11 +183,11 @@ def render_console_html() -> str:
       <div class="switch-row">
         <div class="field">
           <label for="providers"><span data-i18n-en>Data providers</span><span data-i18n-zh>数据源</span></label>
-          <input id="providers" name="providers" value="yfinance">
+          <input id="providers" name="providers" value="akshare, akshare_fund, baostock, yfinance">
         </div>
         <div class="field">
           <label for="timezone"><span data-i18n-en>Timezone</span><span data-i18n-zh>时区</span></label>
-          <input id="timezone" name="timezone" value="America/Los_Angeles">
+          <input id="timezone" name="timezone" value="Asia/Shanghai">
         </div>
       </div>
       <div class="switch-row">
@@ -445,13 +445,13 @@ def options_from_payload(payload: dict[str, Any]) -> ConsoleOptions:
     symbols = [item["symbol"] for item in assets] or parse_symbols(str(payload.get("symbols", "")))
     if not symbols:
         raise ValueError("Enter at least one symbol.")
-    providers = parse_symbols(str(payload.get("providers") or "yfinance"))
+    providers = parse_symbols(str(payload.get("providers") or ", ".join(DEFAULT_PROVIDERS)))
     return ConsoleOptions(
         symbols=symbols,
         title=str(payload.get("title") or "我的自选股每日分析报告"),
-        timezone=str(payload.get("timezone") or "America/Los_Angeles"),
+        timezone=str(payload.get("timezone") or "Asia/Shanghai"),
         language=str(payload.get("language") or "zh-CN"),
-        providers=providers or ["yfinance"],
+        providers=providers or list(DEFAULT_PROVIDERS),
         reports_dir=_relative_path(payload.get("reportsDir"), "reports"),
         history_path=_relative_path(payload.get("historyPath"), "data/history.jsonl"),
         site_dir=_relative_path(payload.get("siteDir"), "site"),

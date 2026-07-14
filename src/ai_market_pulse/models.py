@@ -14,6 +14,17 @@ def is_otc_fund_symbol(symbol: str) -> bool:
     return text.endswith(OTC_FUND_SUFFIX) and len(text) == 9 and text[:6].isdigit()
 
 
+def infer_market(symbol: str) -> str:
+    text = symbol.strip().upper()
+    if text.endswith((".SS", ".SZ", OTC_FUND_SUFFIX)) or (len(text) == 6 and text.isdigit()):
+        return "CN"
+    if text.endswith(".HK"):
+        return "HK"
+    if text.endswith("-USD"):
+        return "CRYPTO"
+    return "US"
+
+
 @dataclass(frozen=True)
 class Asset:
     symbol: str

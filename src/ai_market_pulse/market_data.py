@@ -12,7 +12,7 @@ import os
 import pandas as pd
 
 from .market_cache import CachedHistory, MarketDataCache
-from .models import Asset, PriceSnapshot, is_otc_fund_symbol
+from .models import OTC_FUND_SUFFIX, Asset, PriceSnapshot, is_otc_fund_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -369,6 +369,36 @@ def match_fund_by_name(name: str) -> tuple[str, str] | None:
 
 def fund_name_similarity(left: str, right: str) -> float:
     return SequenceMatcher(None, str(left or ""), str(right or "")).ratio()
+
+
+# Exchange-listed 6-digit prefixes: SH stocks/STAR plus listed funds (5x), SZ
+# stocks/ChiNext plus listed ETF/LOF (15/16/18) and B-shares (20). Codes outside
+# these ranges cannot be on-exchange tickers, so a fund-directory hit is decisive.
+_LISTED_CN_PREFIXES = (
+    "600", "601", "603", "605", "688", "689", "50", "51", "56", "58",
+    "000", "001", "002", "003", "300", "301", "15", "16", "18", "20",
+)
+# Words that appear in OTC fund display names but never in A-share company names.
+_FUND_NAME_HINTS = re.compile(r"基金|混合|债券|指数|联接|股票|货币|QDII|LOF|FOF|持有|增利|回报")
+
+
+def normalize_cn_code(code: str, name: str | None = None) -> str:
+    """Attach the right suffix to a bare 6-digit mainland code.
+
+    A 6-digit code is ambiguous between an exchange listing (.SS/.SZ) and an OTC
+    fund (.OF) — e.g. 000217 is both a SZ ticker range and 华安黄金ETF联接C. The
+    fund directory plus the display name break the tie; exchange rules are the
+    fallback so plain A-share input keeps working offline.
+    """
+    entry = fund_directory_lookup(code)
+    if entry is not None:
+        if name and (fund_name_similarity(name, entry[0]) >= 0.55 or _FUND_NAME_HINTS.search(name)):
+            return f"{code}{OTC_FUND_SUFFIX}"
+        if not code.startswith(_LISTED_CN_PREFIXES):
+            return f"{code}{OTC_FUND_SUFFIX}"
+    if code.startswith(("6", "5", "9")):
+        return f"{code}.SS"
+    return f"{code}.SZ"
 
 
 def _fetch_akshare_fund(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnapshot, pd.DataFrame]:

@@ -51,9 +51,14 @@ class AnalysisSettings:
     min_history_rows: int = 45
 
 
+# Full fallback chain: akshare (CN stocks) → akshare_fund (OTC funds) → baostock
+# (CN stocks when akshare is blocked; errors gracefully if not installed) → yfinance.
+DEFAULT_PROVIDERS = ("akshare", "akshare_fund", "baostock", "yfinance")
+
+
 @dataclass(frozen=True)
 class DataSettings:
-    providers: list[str] = field(default_factory=lambda: ["akshare", "akshare_fund", "yfinance"])
+    providers: list[str] = field(default_factory=lambda: list(DEFAULT_PROVIDERS))
     cache_enabled: bool = True
     cache_dir: str = "data/market-cache"
     cache_ttl_minutes: int = 30
