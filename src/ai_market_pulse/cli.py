@@ -72,6 +72,11 @@ def main(argv: list[str] | None = None) -> None:
     dashboard_parser = subparsers.add_parser("dashboard", help="Render a local static dashboard from history.")
     dashboard_parser.add_argument("--history", default="data/history.jsonl", help="Path to persistent history JSONL.")
     dashboard_parser.add_argument("--output", default="reports/dashboard.html", help="Dashboard HTML output path.")
+    dashboard_parser.add_argument(
+        "--config",
+        default="watchlist.yaml",
+        help="Watchlist config whose assets scope the dashboard. Missing file means no filtering.",
+    )
 
     site_parser = subparsers.add_parser("site", help="Build a local static research site from generated reports.")
     site_parser.add_argument("--reports", default="reports", help="Directory containing reports and dashboard.html.")
@@ -134,7 +139,7 @@ def main(argv: list[str] | None = None) -> None:
             args.no_cache,
         )
     elif args.command == "dashboard":
-        _dashboard(Path(args.history), Path(args.output))
+        _dashboard(Path(args.history), Path(args.output), Path(args.config) if args.config else None)
     elif args.command == "alert-check":
         _alert_check(Path(args.config), Path(args.state), args.no_notify)
     elif args.command == "site":
@@ -275,12 +280,30 @@ def _load_run_config(
     return config, "inline --symbols"
 
 
-def _dashboard(history_path: Path, output_path: Path) -> None:
+def _dashboard(history_path: Path, output_path: Path, config_path: Path | None = None) -> None:
     records = load_history(history_path)
     if not records:
         raise SystemExit(f"No history records found at {history_path}. Run `market-pulse run` first.")
-    path = write_dashboard(records, output_path)
+    symbols = _config_symbols(config_path) if config_path else None
+    path = write_dashboard(records, output_path, symbols=symbols)
     print(f"Dashboard: {path}")
+
+
+def _config_symbols(config_path: Path) -> set[str] | None:
+    if not config_path.is_file():
+        return None
+    try:
+        mapping = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(mapping, dict) or not isinstance(mapping.get("assets"), list):
+        return None
+    symbols = {
+        str(item.get("symbol")).strip()
+        for item in mapping["assets"]
+        if isinstance(item, dict) and str(item.get("symbol") or "").strip()
+    }
+    return symbols or None
 
 
 def _alert_check(config_path: Path, state_path: Path, no_notify: bool) -> None:

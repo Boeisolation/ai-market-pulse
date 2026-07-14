@@ -49,7 +49,16 @@ class DashboardData:
     themes: list[ThemeSnapshot]
 
 
-def build_dashboard_data(records: list[HistoryPoint], max_points: int = 90) -> DashboardData:
+def build_dashboard_data(
+    records: list[HistoryPoint],
+    max_points: int = 90,
+    symbols: set[str] | None = None,
+) -> DashboardData:
+    # History accumulates every symbol ever analyzed (ad-hoc console runs
+    # included); scoping to the current watchlist keeps retired experiments
+    # from lingering on the cockpit forever.
+    if symbols is not None:
+        records = [record for record in records if record.symbol in symbols]
     cleaned = _dedupe(records)
     by_symbol = _group_by_symbol(cleaned)
     trends = [_symbol_trend(symbol, points[-max_points:]) for symbol, points in sorted(by_symbol.items())]
@@ -78,10 +87,14 @@ def build_dashboard_data(records: list[HistoryPoint], max_points: int = 90) -> D
     )
 
 
-def write_dashboard(records: list[HistoryPoint], output_path: str | Path) -> Path:
+def write_dashboard(
+    records: list[HistoryPoint],
+    output_path: str | Path,
+    symbols: set[str] | None = None,
+) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = build_dashboard_data(records)
+    data = build_dashboard_data(records, symbols=symbols)
     path.write_text(render_dashboard(data), encoding="utf-8")
     return path
 
