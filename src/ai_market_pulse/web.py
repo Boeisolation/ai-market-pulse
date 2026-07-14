@@ -130,6 +130,11 @@ def render_console_html() -> str:
     .archive-list {{ max-height: 240px; overflow-y: auto; display: grid; }}
     .archive-box[hidden] {{ display: none; }}
     .portfolio-editor .remove-row {{ width: 34px; min-height: 34px; border: 0; background: transparent; color: var(--red); font-size: 20px; cursor: pointer; }}
+    .topup-box {{ margin-top: 8px; display: grid; gap: 8px; }}
+    .topup-box[hidden] {{ display: none; }}
+    .topup-box textarea {{ min-height: 80px; width: 100%; border: 1px solid var(--line-strong); border-radius: 8px; padding: 10px; background: var(--canvas-soft); color: var(--ink); font: inherit; font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; resize: vertical; }}
+    .topup-actions {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }}
+    .topup-actions .fineprint {{ margin: 0; }}
     .result-list {{ display: grid; gap: 10px; margin-top: 12px; }}
     .result-link {{ display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; border-bottom: 1px solid var(--line); padding: 11px 2px; }}
     .result-link:last-child {{ border-bottom: 0; }}
@@ -189,10 +194,19 @@ def render_console_html() -> str:
           <button class="secondary-button" type="button" data-add-position aria-label="Add position"><span data-i18n-en>Add row</span><span data-i18n-zh>新增持仓</span></button>
           <button class="secondary-button" type="button" data-save-portfolio aria-label="Save holdings"><span data-i18n-en>Save holdings</span><span data-i18n-zh>保存持仓</span></button>
           <button class="secondary-button" type="button" data-refresh-quotes aria-label="Refresh valuation"><span data-i18n-en>Refresh valuation</span><span data-i18n-zh>刷新估值</span></button>
+          <button class="secondary-button" type="button" data-topup-toggle><span data-i18n-en>Batch top-up</span><span data-i18n-zh>批量加仓</span></button>
           <button class="secondary-button" type="button" data-clear-positions aria-label="Clear positions"><span data-i18n-en>Clear all</span><span data-i18n-zh>清空持仓</span></button>
         </div>
         <p class="fineprint" data-import-status><span data-i18n-en>The image is sent to your configured AI provider for transcription. OTC mutual funds are tagged with the .OF suffix; money-market funds are treated as cash and skipped. Remove private account details and review every field.</span><span data-i18n-zh>图片会发送给你配置的 AI 服务商进行抄录。场外基金会自动加 .OF 后缀，货币基金按现金处理不导入。请先遮盖账号等隐私信息，并逐项确认结果。</span></p>
         <div class="portfolio-editor" data-portfolio-editor></div>
+        <div class="topup-box" data-topup-box hidden>
+          <textarea data-topup-input placeholder="每行一条：代码 加仓份额 买入价&#10;005827 100 2.5000&#10;160216 500 0.6530"></textarea>
+          <div class="topup-actions">
+            <button class="secondary-button" type="button" data-topup-confirm><span data-i18n-en>Confirm top-up</span><span data-i18n-zh>确认加仓</span></button>
+            <button class="secondary-button" type="button" data-topup-cancel><span data-i18n-en>Cancel</span><span data-i18n-zh>取消</span></button>
+            <p class="fineprint"><span data-i18n-en>Enter this week's purchases; quantities are added and average cost is recalculated.</span><span data-i18n-zh>输入本次买入记录，系统自动累加份额并计算加权均价。</span></p>
+          </div>
+        </div>
       </div>
       <div class="field">
         <label for="symbols"><span data-i18n-en>Symbols</span><span data-i18n-zh>股票代码</span></label>
@@ -252,6 +266,11 @@ def render_console_html() -> str:
     var savePortfolioButton = document.querySelector("[data-save-portfolio]");
     var refreshQuotesButton = document.querySelector("[data-refresh-quotes]");
     var clearPositionsButton = document.querySelector("[data-clear-positions]");
+    var topupToggle = document.querySelector("[data-topup-toggle]");
+    var topupBox = document.querySelector("[data-topup-box]");
+    var topupInput = document.querySelector("[data-topup-input]");
+    var topupConfirm = document.querySelector("[data-topup-confirm]");
+    var topupCancel = document.querySelector("[data-topup-cancel]");
     var importStatus = document.querySelector("[data-import-status]");
     var portfolioEditor = document.querySelector("[data-portfolio-editor]");
     var navLinks = document.querySelector("[data-nav-links]");
@@ -348,26 +367,43 @@ def render_console_html() -> str:
       }}).filter(function (asset) {{ return includeBlank || asset.symbol; }});
     }}
     function mergeEditorAssets(existing, incoming) {{
-      var merged = existing.slice();
-      var seenSymbols = {{}};
-      var seenNames = {{}};
-      var appended = 0;
-      existing.forEach(function (asset) {{
-        var symbol = String(asset.symbol || "").trim().toUpperCase();
-        var name = String(asset.name || "").trim();
-        if (symbol) seenSymbols[symbol] = true;
-        if (name) seenNames[name] = true;
+      var merged = existing.map(function (a) {{ return Object.assign({{}}, a); }});
+      var symIdx = {{}};
+      var nameIdx = {{}};
+      var appended = 0, topped = 0;
+      merged.forEach(function (asset, i) {{
+        var sym = String(asset.symbol || "").trim().toUpperCase();
+        var nm = String(asset.name || "").trim();
+        if (sym) symIdx[sym] = i;
+        if (nm) nameIdx[nm] = i;
       }});
       incoming.forEach(function (asset) {{
-        var symbol = String(asset.symbol || "").trim().toUpperCase();
-        var name = String(asset.name || "").trim();
-        if (symbol ? seenSymbols[symbol] : (name && seenNames[name])) return;
-        if (symbol) seenSymbols[symbol] = true;
-        if (name) seenNames[name] = true;
+        var sym = String(asset.symbol || "").trim().toUpperCase();
+        var nm = String(asset.name || "").trim();
+        var idx = sym ? symIdx[sym] : (nm ? nameIdx[nm] : undefined);
+        if (idx == null && sym && /^\\d{{6}}$/.test(sym)) idx = symIdx[sym + ".OF"];
+        if (idx != null) {{
+          var exist = merged[idx];
+          var addQty = Number(asset.quantity) || 0;
+          if (addQty > 0) {{
+            var oldQty = Number(exist.quantity) || 0;
+            var newQty = oldQty + addQty;
+            var oldCost = Number(exist.cost_basis) || 0;
+            var addCost = Number(asset.cost_basis) || 0;
+            exist.quantity = newQty;
+            if (oldCost && addCost) exist.cost_basis = Math.round((oldCost * oldQty + addCost * addQty) / newQty * 10000) / 10000;
+            else if (addCost && !oldCost) exist.cost_basis = addCost;
+            topped++;
+          }}
+          if (!exist.name && asset.name) exist.name = asset.name;
+          return;
+        }}
+        if (sym) symIdx[sym] = merged.length;
+        if (nm) nameIdx[nm] = merged.length;
         merged.push(asset);
-        appended += 1;
+        appended++;
       }});
-      return {{ assets: merged, appended: appended, skipped: incoming.length - appended }};
+      return {{ assets: merged, appended: appended, topped: topped }};
     }}
     var quotes = {{}};
     function syncSymbolsFromEditor() {{
@@ -478,9 +514,10 @@ def render_console_html() -> str:
         if (!response.ok) throw new Error(body.error || "Request failed");
         var merge = mergeEditorAssets(editorAssets(true), body.assets || []);
         renderPortfolioEditor(merge.assets);
-        var summary = merge.skipped
-          ? text("Appended " + merge.appended + " holdings, skipped " + merge.skipped + " duplicates. ", "已追加 " + merge.appended + " 项持仓，跳过重复 " + merge.skipped + " 项。")
-          : text("Appended " + merge.appended + " holdings. ", "已追加 " + merge.appended + " 项持仓。");
+        var sumParts = [];
+        if (merge.topped) sumParts.push(text("Topped up " + merge.topped + " existing", "已加仓 " + merge.topped + " 项已有持仓"));
+        if (merge.appended) sumParts.push(text("appended " + merge.appended + " new", "新增 " + merge.appended + " 项"));
+        var summary = sumParts.length ? sumParts.join(text(", ", "，")) + text(". ", "。") : text("No changes. ", "无变更。");
         importStatus.textContent = summary + text("Review every recognized field before running analysis.", "请逐项确认识别结果，再开始分析。");
       }} catch (error) {{
         importStatus.textContent = error.message || String(error);
@@ -494,6 +531,47 @@ def render_console_html() -> str:
     clearPositionsButton.addEventListener("click", function () {{
       renderPortfolioEditor([]);
       importStatus.textContent = text("Cleared the editor. Saved holdings stay until you save again.", "已清空编辑器。已保存的持仓仍在，重新保存后才会覆盖。");
+    }});
+    topupToggle.addEventListener("click", function () {{
+      topupBox.hidden = !topupBox.hidden;
+      if (!topupBox.hidden) topupInput.focus();
+    }});
+    topupCancel.addEventListener("click", function () {{
+      topupBox.hidden = true;
+      topupInput.value = "";
+    }});
+    topupConfirm.addEventListener("click", function () {{
+      var lines = topupInput.value.trim().split("\\n").filter(Boolean);
+      if (!lines.length) return;
+      var topups = [];
+      lines.forEach(function (line) {{
+        var parts = line.trim().split(/[\\s,，\\t]+/);
+        if (parts.length < 2) return;
+        var sym = parts[0];
+        if (/^\\d{{6}}$/.test(sym)) sym += ".OF";
+        var qty = parseFloat(parts[1]);
+        if (!sym || isNaN(qty) || qty <= 0) return;
+        var price = parts.length >= 3 ? parseFloat(parts[2]) : NaN;
+        topups.push({{ symbol: sym, quantity: qty, cost_basis: isNaN(price) ? undefined : price }});
+      }});
+      if (!topups.length) {{
+        importStatus.textContent = text("Could not parse top-up records. Format: symbol quantity [price]", "无法解析加仓记录。格式：代码 份额 [买入价]");
+        return;
+      }}
+      var assets = editorAssets(true);
+      if (!assets.length) {{
+        importStatus.textContent = text("Load holdings first, then top up.", "请先载入持仓再加仓。");
+        return;
+      }}
+      var result = mergeEditorAssets(assets, topups);
+      renderPortfolioEditor(result.assets);
+      var msg = [];
+      if (result.topped) msg.push(text("Topped up " + result.topped + " holdings", "已加仓 " + result.topped + " 项持仓"));
+      if (result.appended) msg.push(text("added " + result.appended + " new", "新增 " + result.appended + " 项"));
+      importStatus.textContent = (msg.length ? msg.join(text(", ", "，")) : text("No matches found", "未匹配到持仓")) + text(". Click Save to persist.", "。点击「保存持仓」以生效。");
+      topupBox.hidden = true;
+      topupInput.value = "";
+      refreshQuotes();
     }});
     savePortfolioButton.addEventListener("click", async function () {{
       var assets = editorAssets();

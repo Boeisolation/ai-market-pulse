@@ -27,6 +27,11 @@ def test_render_console_html_contains_visual_symbol_form() -> None:
     assert "data-holdings-count" in html
     assert "loadSavedPortfolio" in html
     assert "loadLatestOutputs" in html
+    assert "data-topup-box" in html
+    assert "data-topup-toggle" in html
+    assert "批量加仓" in html
+    assert "mergeEditorAssets" in html
+    assert "确认加仓" in html
     assert "创建今日量化研究任务" in html
     assert "Research workflow" in html
     assert "主题研究" in html
