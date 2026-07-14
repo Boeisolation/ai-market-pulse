@@ -478,7 +478,15 @@ def _fetch_baostock(asset: Asset, lookback_days: int) -> tuple[Asset, PriceSnaps
     except ImportError as exc:
         raise MarketDataError("baostock is not installed. Run `pip install -e .[cn]` to enable it.") from exc
 
-    exchange = "sh" if code.startswith(("6", "5", "9")) else "sz"
+    # An explicit suffix wins: SH index codes like 000300.SS share the 000xxx
+    # range with SZ stocks, so prefix guessing would send them to the wrong exchange.
+    symbol_upper = asset.symbol.upper()
+    if symbol_upper.endswith(".SS"):
+        exchange = "sh"
+    elif symbol_upper.endswith(".SZ"):
+        exchange = "sz"
+    else:
+        exchange = "sh" if code.startswith(("6", "5", "9")) else "sz"
     bs_code = f"{exchange}.{code}"
     end_date = date.today()
     start_date = end_date - timedelta(days=max(lookback_days * 2, 90))

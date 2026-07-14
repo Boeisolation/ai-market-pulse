@@ -89,3 +89,42 @@ def test_custom_provider_can_be_registered() -> None:
     register_provider(ProviderSpec("unit-provider", fetch, lambda asset: asset.market == "US"))
     _, snapshot, _ = fetch_history(Asset("UNIT"), 1, ["unit-provider"])
     assert snapshot.last_close == 1
+
+
+def test_fetch_baostock_honors_explicit_exchange_suffix(monkeypatch) -> None:
+    # 000300.SS (CSI 300 index) shares its 000xxx range with SZ stocks; prefix
+    # guessing sent it to sz.000300 and the benchmark silently went missing.
+    from ai_market_pulse.market_data import _fetch_baostock
+
+    captured: dict[str, str] = {}
+
+    class FakeQuery:
+        def __init__(self) -> None:
+            self._rows = [["2026-07-10", "1", "1", "1", "1", "100"]]
+
+        def next(self) -> bool:
+            return bool(self._rows)
+
+        def get_row_data(self) -> list[str]:
+            return self._rows.pop()
+
+    class FakeResult:
+        error_code = "0"
+        error_msg = ""
+
+    fake_module = types.ModuleType("baostock")
+    fake_module.login = lambda: FakeResult()  # type: ignore[attr-defined]
+    fake_module.logout = lambda: None  # type: ignore[attr-defined]
+
+    def fake_query(code, fields, **kwargs):
+        captured["code"] = code
+        return FakeQuery()
+
+    fake_module.query_history_k_data_plus = fake_query  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "baostock", fake_module)
+
+    _fetch_baostock(Asset(symbol="000300.SS", market="CN"), 30)
+    assert captured["code"] == "sh.000300"
+
+    _fetch_baostock(Asset(symbol="000001.SZ", market="CN"), 30)
+    assert captured["code"] == "sz.000001"
