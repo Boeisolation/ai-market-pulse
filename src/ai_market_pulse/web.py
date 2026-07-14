@@ -5,6 +5,7 @@ import binascii
 import json
 import os
 from dataclasses import dataclass, replace
+from datetime import datetime
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -70,6 +71,13 @@ def render_console_html() -> str:
     {ui_styles()}
     .console-grid {{ display: grid; grid-template-columns: minmax(420px, 0.9fr) minmax(0, 1.1fr); gap: 14px; align-items: start; }}
     .console-header h1 {{ font-size: 38px; }}
+    .topbar-links {{ display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 0 auto 0 20px; font-size: 13px; font-weight: 720; }}
+    .topbar-links a {{ color: var(--muted); }}
+    .topbar-links a:hover {{ color: var(--brand-strong); text-decoration: none; }}
+    .topbar-links[hidden] {{ display: none; }}
+    .heading-tools {{ display: inline-flex; align-items: center; gap: 10px; }}
+    .heading-tools .pill {{ color: var(--brand-strong); border-color: var(--line-strong); font-size: 11px; }}
+    .heading-tools .pill[hidden] {{ display: none; }}
     .console-meta {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }}
     .console-meta div {{ min-width: 0; }}
     .console-meta dt {{ color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }}
@@ -136,6 +144,7 @@ def render_console_html() -> str:
 <main>
   <nav class="topbar">
     <div class="brand-mark">AI Market Pulse</div>
+    <div class="topbar-links" data-nav-links hidden></div>
     {language_toggle()}
   </nav>
   <header class="hero console-header">
@@ -160,13 +169,14 @@ def render_console_html() -> str:
   </section>
   <section class="console-grid">
     <form class="panel form-grid work-panel" data-run-form>
-      <div class="panel-heading"><h2><span data-i18n-en>Research Inputs</span><span data-i18n-zh>研究输入</span></h2><span class="mono">01—02</span></div>
+      <div class="panel-heading"><h2><span data-i18n-en>Research Inputs</span><span data-i18n-zh>研究输入</span></h2><span class="heading-tools"><span class="pill mono" data-holdings-count hidden><span data-count></span>&nbsp;<span data-i18n-en>holdings</span><span data-i18n-zh>持仓</span></span><span class="mono">01—02</span></span></div>
       <div class="field">
         <label for="portfolio-image"><span data-i18n-en>Import brokerage / fund-app screenshot</span><span data-i18n-zh>导入券商或基金App持仓截图</span></label>
         <div class="import-tools">
           <input id="portfolio-image" type="file" accept="image/png,image/jpeg,image/webp" data-portfolio-image>
           <button class="secondary-button" type="button" data-import-portfolio><span data-i18n-en>Recognize holdings</span><span data-i18n-zh>识别持仓</span></button>
           <button class="secondary-button" type="button" data-add-position aria-label="Add position"><span data-i18n-en>Add row</span><span data-i18n-zh>新增持仓</span></button>
+          <button class="secondary-button" type="button" data-save-portfolio aria-label="Save holdings"><span data-i18n-en>Save holdings</span><span data-i18n-zh>保存持仓</span></button>
           <button class="secondary-button" type="button" data-clear-positions aria-label="Clear positions"><span data-i18n-en>Clear all</span><span data-i18n-zh>清空持仓</span></button>
         </div>
         <p class="fineprint" data-import-status><span data-i18n-en>The image is sent to your configured AI provider for transcription. OTC mutual funds are tagged with the .OF suffix; money-market funds are treated as cash and skipped. Remove private account details and review every field.</span><span data-i18n-zh>图片会发送给你配置的 AI 服务商进行抄录。场外基金会自动加 .OF 后缀，货币基金按现金处理不导入。请先遮盖账号等隐私信息，并逐项确认结果。</span></p>
@@ -223,9 +233,12 @@ def render_console_html() -> str:
     var imageInput = document.querySelector("[data-portfolio-image]");
     var importButton = document.querySelector("[data-import-portfolio]");
     var addPositionButton = document.querySelector("[data-add-position]");
+    var savePortfolioButton = document.querySelector("[data-save-portfolio]");
     var clearPositionsButton = document.querySelector("[data-clear-positions]");
     var importStatus = document.querySelector("[data-import-status]");
     var portfolioEditor = document.querySelector("[data-portfolio-editor]");
+    var navLinks = document.querySelector("[data-nav-links]");
+    var holdingsCount = document.querySelector("[data-holdings-count]");
     var askForm = document.querySelector("[data-ask-form]");
     var answerBox = document.querySelector("[data-answer]");
     var latestReportPath = null;
@@ -256,10 +269,36 @@ def render_console_html() -> str:
       if (!href) return "";
       return '<a class="result-link" href="' + esc(href) + '" target="_blank" rel="noopener"><strong>' + esc(label) + '</strong><span>' + esc(text("Open", "打开")) + '</span></a>';
     }}
+    function outputLinksHtml(links, alerts) {{
+      var alertNote = alerts && alerts.length ? '<div class="alert-note"><strong>' + esc(text("New alerts", "新异动")) + '</strong><p>' + esc(alerts.join("\\n")) + '</p></div>' : '';
+      return [
+        linkRow(text("HTML report", "HTML 报告"), links.html),
+        linkRow(text("Dashboard", "Dashboard"), links.dashboard),
+        linkRow(text("Static site", "静态站点"), links.site),
+        linkRow(text("Saved watchlist", "已保存自选配置"), links.watchlist),
+        linkRow("JSON", links.json),
+        linkRow("Markdown", links.markdown),
+        alertNote
+      ].join("");
+    }}
+    function navItem(en, zh, href) {{
+      if (!href) return "";
+      return '<a href="' + esc(href) + '" target="_blank" rel="noopener"><span data-i18n-en>' + esc(en) + '</span><span data-i18n-zh>' + esc(zh) + '</span></a>';
+    }}
+    function renderNav(links) {{
+      var items = [
+        navItem("Latest report", "最新报告", links.html),
+        navItem("Dashboard", "Dashboard", links.dashboard),
+        navItem("Static site", "静态站点", links.site)
+      ].filter(Boolean);
+      navLinks.innerHTML = items.join("");
+      navLinks.hidden = !items.length;
+    }}
     function renderPortfolioEditor(assets) {{
       if (!assets || !assets.length) {{
         portfolioEditor.classList.remove("is-visible");
         portfolioEditor.innerHTML = "";
+        updateHoldingsCount(0);
         return;
       }}
       var rows = assets.map(function (asset) {{
@@ -312,6 +351,12 @@ def render_console_html() -> str:
     function syncSymbolsFromEditor() {{
       var assets = editorAssets();
       if (assets.length) form.symbols.value = assets.map(function (asset) {{ return asset.symbol; }}).join(", ");
+      updateHoldingsCount(assets.length);
+    }}
+    function updateHoldingsCount(count) {{
+      if (count == null) count = editorAssets().length;
+      holdingsCount.querySelector("[data-count]").textContent = count;
+      holdingsCount.hidden = !count;
     }}
     function readImage(file) {{
       return new Promise(function (resolve, reject) {{
@@ -347,8 +392,63 @@ def render_console_html() -> str:
     }});
     clearPositionsButton.addEventListener("click", function () {{
       renderPortfolioEditor([]);
-      importStatus.textContent = text("Cleared all holdings.", "已清空全部持仓。");
+      importStatus.textContent = text("Cleared the editor. Saved holdings stay until you save again.", "已清空编辑器。已保存的持仓仍在，重新保存后才会覆盖。");
     }});
+    savePortfolioButton.addEventListener("click", async function () {{
+      var assets = editorAssets();
+      if (!assets.length) {{
+        importStatus.textContent = text("Add at least one holding before saving.", "请先添加至少一项持仓再保存。");
+        return;
+      }}
+      savePortfolioButton.disabled = true;
+      importStatus.textContent = text("Saving holdings…", "正在保存持仓…");
+      try {{
+        var response = await fetch("/api/portfolio/save", {{
+          method: "POST",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify({{ assets: assets, title: form.title.value, timezone: form.timezone.value, providers: form.providers.value }})
+        }});
+        var body = await response.json();
+        if (!response.ok) throw new Error(body.error || "Request failed");
+        importStatus.textContent = text("Saved " + body.saved + " holdings. They will load automatically next time.", "已保存 " + body.saved + " 项持仓，下次打开页面会自动载入。");
+      }} catch (error) {{
+        importStatus.textContent = error.message || String(error);
+      }} finally {{ savePortfolioButton.disabled = false; }}
+    }});
+    async function loadSavedPortfolio() {{
+      try {{
+        var response = await fetch("/api/portfolio");
+        var body = await response.json();
+        if (!response.ok || !body.assets || !body.assets.length) return;
+        renderPortfolioEditor(body.assets);
+        if (body.title) {{ titleInput.value = body.title; titleEdited = true; }}
+        if (body.timezone) form.timezone.value = body.timezone;
+        if (Array.isArray(body.providers) && body.providers.length) form.providers.value = body.providers.join(", ");
+        var origin = body.source === "watchlist" ? text("daily watchlist", "每日报告配置") : text("console save", "控制台存档");
+        var stamp = body.updatedAt ? text(", updated ", "，更新于 ") + body.updatedAt : "";
+        importStatus.textContent = text(
+          "Loaded " + body.assets.length + " saved holdings (" + origin + stamp + "). Adjust quantities, add rows, or append another screenshot, then save or run.",
+          "已自动载入 " + body.assets.length + " 项已保存持仓（来源：" + origin + stamp + "）。可直接修改份额、新增持仓或追加截图识别，改完点保存或直接分析。"
+        );
+      }} catch (error) {{ /* fall back to an empty editor */ }}
+    }}
+    async function loadLatestOutputs() {{
+      try {{
+        var response = await fetch("/api/outputs");
+        var body = await response.json();
+        if (!response.ok) return;
+        renderNav(body);
+        if (body.json) {{
+          latestReportPath = body.json;
+          askForm.classList.add("is-visible");
+        }}
+        if (!results.innerHTML && (body.html || body.dashboard || body.site)) {{
+          var stamp = body.generatedAt ? text(" (", "（") + body.generatedAt + text(")", "）") : "";
+          setStatus(text("Latest saved outputs" + stamp + ". Run analysis to refresh them.", "以下是最近一次生成的输出" + stamp + "，重新分析后会刷新。"), false);
+          results.innerHTML = outputLinksHtml(body, []);
+        }}
+      }} catch (error) {{ /* keep the empty state */ }}
+    }}
     portfolioEditor.addEventListener("input", syncSymbolsFromEditor);
     portfolioEditor.addEventListener("click", function (event) {{
       var remove = event.target.closest("[data-remove-row]");
@@ -385,16 +485,8 @@ def render_console_html() -> str:
         setStatus(text("Done. Generated " + body.symbols.join(", "), "完成。已生成 " + body.symbols.join(", ")), false);
         latestReportPath = body.links.json;
         askForm.classList.add("is-visible");
-        var alertNote = body.alerts && body.alerts.length ? '<div class="alert-note"><strong>' + esc(text("New alerts", "新异动")) + '</strong><p>' + esc(body.alerts.join("\\n")) + '</p></div>' : '';
-        results.innerHTML = [
-          linkRow(text("HTML report", "HTML 报告"), body.links.html),
-          linkRow(text("Dashboard", "Dashboard"), body.links.dashboard),
-          linkRow(text("Static site", "静态站点"), body.links.site),
-          linkRow(text("Saved watchlist", "已保存自选配置"), body.links.watchlist),
-          linkRow("JSON", body.links.json),
-          linkRow("Markdown", body.links.markdown),
-          alertNote
-        ].join("");
+        results.innerHTML = outputLinksHtml(body.links, body.alerts);
+        renderNav(body.links);
       }} catch (error) {{
         setStatus(error.message || String(error), true);
       }} finally {{
@@ -432,6 +524,8 @@ def render_console_html() -> str:
       }});
     }});
     syncDefaultTitle();
+    loadSavedPortfolio();
+    loadLatestOutputs();
   }}());
 </script>
 </body>
@@ -483,7 +577,7 @@ def run_console_analysis(options: ConsoleOptions, root: str | Path = ".") -> dic
     config = replace(config, news=replace(config.news, enabled=options.include_news))
     config = replace(config, llm=replace(config.llm, enabled=options.use_ai))
 
-    watchlist_path = _resolve_under_root(root_path, Path("data/console-watchlist.yaml"))
+    watchlist_path = _resolve_under_root(root_path, _CONSOLE_WATCHLIST)
     watchlist_path.parent.mkdir(parents=True, exist_ok=True)
     watchlist_path.write_text(yaml.safe_dump(config_mapping, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
@@ -522,6 +616,114 @@ def run_console_analysis(options: ConsoleOptions, root: str | Path = ".") -> dic
     }
 
 
+_CONSOLE_WATCHLIST = Path("data/console-watchlist.yaml")
+
+
+def _read_watchlist_entry(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        mapping = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(mapping, dict) or not isinstance(mapping.get("assets"), list):
+        return None
+    assets = normalize_portfolio_assets([item for item in mapping["assets"] if isinstance(item, dict)])
+    if not assets:
+        return None
+    data_section = mapping.get("data") if isinstance(mapping.get("data"), dict) else {}
+    providers = data_section.get("providers")
+    mtime = path.stat().st_mtime
+    return {
+        "assets": assets,
+        "title": mapping.get("title") or None,
+        "timezone": mapping.get("timezone") or None,
+        "providers": providers if isinstance(providers, list) else None,
+        "updatedAt": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M"),
+        "mtime": mtime,
+    }
+
+
+def load_saved_portfolio(root: str | Path = ".") -> dict[str, Any]:
+    """Return the most recently saved holdings so the console reopens with them.
+
+    Console runs persist to data/console-watchlist.yaml while the scheduled
+    daily report keeps watchlist.yaml at the project root; whichever was
+    touched last wins so edits from either entry point survive.
+    """
+    root_path = Path(root).resolve()
+    entries = []
+    for source, path in (("console", root_path / _CONSOLE_WATCHLIST), ("watchlist", root_path / "watchlist.yaml")):
+        entry = _read_watchlist_entry(path)
+        if entry:
+            entry["source"] = source
+            entries.append(entry)
+    if not entries:
+        return {"assets": [], "source": None}
+    best = max(entries, key=lambda item: item["mtime"])
+    best.pop("mtime")
+    return best
+
+
+def save_console_portfolio(payload: dict[str, Any], root: str | Path = ".") -> dict[str, Any]:
+    root_path = Path(root).resolve()
+    raw_assets = payload.get("assets") if isinstance(payload.get("assets"), list) else []
+    assets = normalize_portfolio_assets([item for item in raw_assets if isinstance(item, dict)])
+    if not assets:
+        raise ValueError("Add at least one holding with a symbol before saving.")
+    providers = parse_symbols(str(payload.get("providers") or ", ".join(DEFAULT_PROVIDERS)))
+    config_text = custom_watchlist_config(
+        [item["symbol"] for item in assets],
+        title=str(payload.get("title") or "我的自选股每日分析报告"),
+        timezone=str(payload.get("timezone") or "Asia/Shanghai"),
+        language=str(payload.get("language") or "zh-CN"),
+        providers=providers or list(DEFAULT_PROVIDERS),
+    )
+    config_mapping = yaml.safe_load(config_text) or {}
+    config_mapping["assets"] = assets
+    watchlist_path = _resolve_under_root(root_path, _CONSOLE_WATCHLIST)
+    watchlist_path.parent.mkdir(parents=True, exist_ok=True)
+    watchlist_path.write_text(yaml.safe_dump(config_mapping, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return {"saved": len(assets), "watchlist": _href(root_path, watchlist_path)}
+
+
+def latest_outputs(root: str | Path = ".") -> dict[str, Any]:
+    """Link the newest generated outputs so the console has entry points before any run."""
+    root_path = Path(root).resolve()
+    reports_dir = root_path / "reports"
+    outputs: dict[str, Any] = {
+        "html": None,
+        "json": None,
+        "markdown": None,
+        "dashboard": None,
+        "site": None,
+        "watchlist": None,
+        "generatedAt": None,
+    }
+    if reports_dir.is_dir():
+        # Report names embed their timestamp (market-pulse-YYYYMMDD-HHMM), so
+        # lexicographic order is chronological order.
+        reports = sorted(reports_dir.glob("market-pulse-*.html"))
+        if reports:
+            newest = reports[-1]
+            outputs["html"] = _href(root_path, newest)
+            outputs["generatedAt"] = datetime.fromtimestamp(newest.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+            for key, suffix in (("json", ".json"), ("markdown", ".md")):
+                twin = newest.with_suffix(suffix)
+                if twin.is_file():
+                    outputs[key] = _href(root_path, twin)
+        dashboard = reports_dir / "dashboard.html"
+        if dashboard.is_file():
+            outputs["dashboard"] = _href(root_path, dashboard)
+    site_index = root_path / "site" / "index.html"
+    if site_index.is_file():
+        outputs["site"] = _href(root_path, site_index)
+    console_watchlist = root_path / _CONSOLE_WATCHLIST
+    if console_watchlist.is_file():
+        outputs["watchlist"] = _href(root_path, console_watchlist)
+    return outputs
+
+
 class ConsoleHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, root: Path, **kwargs):
         self.root = root
@@ -531,10 +733,17 @@ class ConsoleHandler(SimpleHTTPRequestHandler):
         if self.path in {"/", "/console"}:
             self._send_html(render_console_html())
             return
+        if self.path in {"/api/portfolio", "/api/outputs"}:
+            try:
+                result = load_saved_portfolio(self.root) if self.path == "/api/portfolio" else latest_outputs(self.root)
+                self._send_json(result)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=400)
+            return
         super().do_GET()
 
     def do_POST(self) -> None:
-        if self.path not in {"/api/analyze", "/api/portfolio/extract", "/api/ask"}:
+        if self.path not in {"/api/analyze", "/api/portfolio/extract", "/api/portfolio/save", "/api/ask"}:
             self.send_error(404)
             return
         try:
@@ -543,6 +752,8 @@ class ConsoleHandler(SimpleHTTPRequestHandler):
                 result = run_console_analysis(options_from_payload(payload), self.root)
             elif self.path == "/api/portfolio/extract":
                 result = _extract_portfolio_payload(payload)
+            elif self.path == "/api/portfolio/save":
+                result = save_console_portfolio(payload, self.root)
             else:
                 result = _answer_payload(payload, self.root)
             self._send_json(result)

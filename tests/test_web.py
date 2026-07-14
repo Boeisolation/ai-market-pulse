@@ -20,7 +20,13 @@ def test_render_console_html_contains_visual_symbol_form() -> None:
     assert "清空持仓" in html
     assert "min-width: 0" in html
     assert "新增持仓" in html
-    assert 'body.alerts.join("\\n")' in html
+    assert 'alerts.join("\\n")' in html
+    assert "/api/portfolio/save" in html
+    assert "保存持仓" in html
+    assert "data-nav-links" in html
+    assert "data-holdings-count" in html
+    assert "loadSavedPortfolio" in html
+    assert "loadLatestOutputs" in html
     assert "创建今日量化研究任务" in html
     assert "Research workflow" in html
     assert "主题研究" in html
