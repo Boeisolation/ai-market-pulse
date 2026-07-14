@@ -59,6 +59,9 @@ def build_dashboard_data(
     # from lingering on the cockpit forever.
     if symbols is not None:
         records = [record for record in records if record.symbol in symbols]
+    # A record without a close is a failed fetch (score falls back to a
+    # neutral 50); rendering it would fake flat scores and bogus deltas.
+    records = [record for record in records if record.close is not None]
     cleaned = _dedupe(records)
     by_symbol = _group_by_symbol(cleaned)
     trends = [_symbol_trend(symbol, points[-max_points:]) for symbol, points in sorted(by_symbol.items())]
